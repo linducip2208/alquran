@@ -4,6 +4,8 @@ internal static class ProgramServices
 {
     public static KsuApi Api { get; } = new();
 
+    public static string? ActiveTranslationKey { get; set; }
+
     public static HttpClient Http { get; } = new()
     {
         Timeout = TimeSpan.FromSeconds(45),

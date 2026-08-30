@@ -47,6 +47,7 @@ Alternatif: [GitHub Releases](https://github.com/linducip2208/alquran/releases) 
 | Pengingat Harian | Notifikasi tray di jam yang diatur |
 | Mode Fokus | Toolbar & panel hilang, Esc untuk keluar |
 | Dark Mode | Tema gelap untuk seluruh aplikasi |
+| Konten Inspirasi | **Ayat Hari Ini**, 12 kategori motivasi (cemas, rezeki, jodoh, ikhtiar, dll.), Doa Rabbana, quick access Ayat Kursi & 3 Qul — bisa dijadikan kartu PNG |
 | Tampilkan/Sembunyikan | Toggle arti, tafsir inline, panel tafsir, overlay mushaf — semua bisa dimatikan |
 | Navigasi Lengkap | Surah, Ayat, Halaman, Juz — seperti situs aslinya |
 | Pencarian | Cari kata/frasa di seluruh Al-Qur'an → langsung lompat ke ayat + **hasil ditandai cincin biru di mushaf** |

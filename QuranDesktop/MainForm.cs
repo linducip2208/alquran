@@ -6,7 +6,7 @@ internal sealed class MainForm : Form
 {
     private const int MM_MCINOTIFY = 0x3B9;
 
-    private readonly AppSettings _settings = AppSettings.Load();
+    private readonly AppSettings _settings = AppSettings.Current;
     private readonly IAudioEngine _audio;
     private readonly Queue<string> _playQueue = new();
 
@@ -86,6 +86,7 @@ internal sealed class MainForm : Form
     private Button _btnCard = new();
     private Button _btnFeatures = new();
     private TrackBar _trackSpeed = new();
+    private Button _btnInspirasi = new();
     private MiniPlayerForm? _mini;
     private NotifyIcon? _trayIcon;
     private System.Windows.Forms.Timer? _reminderTimer;
@@ -339,12 +340,14 @@ internal sealed class MainForm : Form
 
         _btnStar = new Button { Text = "★ Bookmark", Width = 96 };
         _btnCard = new Button { Text = "Kartu Ayat", Width = 86 };
+        _btnInspirasi = new Button { Text = "✨ Inspirasi", Width = 92 };
         _btnFeatures = new Button { Text = "Fitur Lainnya", Width = 104 };
         _trackSpeed = new TrackBar { Minimum = 5, Maximum = 20, TickFrequency = 5, Width = 110, TickStyle = TickStyle.None };
 
         var lblSpeedVal = new Label { Text = "1.0×", AutoSize = true, Padding = new Padding(0, 10, 0, 0) };
         flow4.Controls.Add(_btnStar);
         flow4.Controls.Add(_btnCard);
+        flow4.Controls.Add(_btnInspirasi);
         flow4.Controls.Add(_btnFeatures);
         flow4.Controls.Add(new Label { Text = "Speed:", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
         flow4.Controls.Add(_trackSpeed);
@@ -597,6 +600,7 @@ internal sealed class MainForm : Form
             if (t != null)
             {
                 _settings.Translation = t.Key;
+                ProgramServices.ActiveTranslationKey = t.Key;
                 _settings.Save();
                 _renderedSurah = -1;
                 if (CurrentMode == "teks")
@@ -763,7 +767,20 @@ internal sealed class MainForm : Form
             }
         };
 
+        _btnInspirasi.Click += (_, _) =>
+        {
+            using var dlg = new InspirasiDialog();
+            dlg.GotoRequested += (s, a) => _ = GotoAyahAsync(s, a);
+            dlg.ShowDialog(this);
+        };
+
         var featuresMenu = new ContextMenuStrip();
+        featuresMenu.Items.Add("Ayat Hari Ini", null, (_, _) =>
+        {
+            using var d = new DailyAyahDialog();
+            d.GotoRequested += (s, a) => _ = GotoAyahAsync(s, a);
+            d.ShowDialog(this);
+        });
         featuresMenu.Items.Add("Target Khatam", null, (_, _) =>
         {
             using var d = new KhatamDialog();

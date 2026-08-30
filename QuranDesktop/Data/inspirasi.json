@@ -1,0 +1,150 @@
+{
+  "kategori": [
+    {
+      "key": "cemas",
+      "judul": "Cemas & Gelisah",
+      "ayat": [
+        { "s": 13, "a": 28, "label": "Dengan mengingat Allah, hati menjadi tenteram" },
+        { "s": 2, "a": 186, "label": "Allah dekat dan perkenankan doa hamba-Nya" },
+        { "s": 3, "a": 173, "label": "Cukuplah Allah bagiku, sebaik-baik perlindungan" },
+        { "s": 9, "a": 40, "label": "Jangan bersedih, Allah bersama kita" },
+        { "s": 27, "a": 62, "label": "Yang mengabulkan doa orang yang dalam kesulitan" },
+        { "s": 65, "a": 3, "label": "Barangsiapa bertawakal, cukuplah Allah baginya" }
+      ]
+    },
+    {
+      "key": "sedih",
+      "judul": "Sedih & Kehilangan",
+      "ayat": [
+        { "s": 2, "a": 155, "label": "Kami uji dengan sedikit ketakutan, kelaparan, dan kekurangan" },
+        { "s": 2, "a": 157, "label": "Merekalah yang mendapat ampunan dan rahmat" },
+        { "s": 3, "a": 139, "label": "Jangan lemah dan jangan bersedih, kalian yang unggul" },
+        { "s": 12, "a": 87, "label": "Jangan berputus asa dari rahmat Allah" },
+        { "s": 94, "a": 5, "label": "Bersama kesulitan ada kemudahan" }
+      ]
+    },
+    {
+      "key": "sabar",
+      "judul": "Kesabaran",
+      "ayat": [
+        { "s": 2, "a": 153, "label": "Tolong-menolonglah dalam sabar dan shalat" },
+        { "s": 2, "a": 156, "label": "Innalillahi wa inna ilaihi raji'un" },
+        { "s": 39, "a": 10, "label": "Orang-orang sabar mendapat pahala tanpa batas" },
+        { "s": 16, "a": 127, "label": "Bersabarlah, kesabaranmu hanya karena Allah" },
+        { "s": 3, "a": 200, "label": "Bertahanlah dalam kesabaran dan keistiqamahan" }
+      ]
+    },
+    {
+      "key": "syukur",
+      "judul": "Syukur",
+      "ayat": [
+        { "s": 14, "a": 7, "label": "Jika bersyukur, Kutambah nikmat kepadamu" },
+        { "s": 2, "a": 152, "label": "Ingatlah kepada-Ku, Aku ingat kepadamu; bersyukurlah" },
+        { "s": 34, "a": 13, "label": "Sedikit sekali hamba yang bersyukur" },
+        { "s": 27, "a": 19, "label": "Ya Rabb, tampahkan aku kemampuan bersyukur" }
+      ]
+    },
+    {
+      "key": "rezeki",
+      "judul": "Rezeki",
+      "ayat": [
+        { "s": 65, "a": 2, "label": "Siapa bertakwa, Allah beri jalan keluar" },
+        { "s": 65, "a": 3, "label": "Rezeki dari arah yang tidak disangka-sangka" },
+        { "s": 11, "a": 6, "label": "Tiap binatang, rezekinya dijamin Allah" },
+        { "s": 40, "a": 60, "label": "Berdoalah kepada-Ku, pasti Kuperkenankan" },
+        { "s": 71, "a": 10, "label": "Mintalah ampunan Tuhanmu — Dia memberi harta dan anak" },
+        { "s": 29, "a": 60, "label": "Binatang di bumi pun Allah yang memberi makan" }
+      ]
+    },
+    {
+      "key": "utang",
+      "judul": "Utang & Kesempitan",
+      "ayat": [
+        { "s": 2, "a": 286, "label": "Allah tidak membebani seseorang di luar kesanggupannya" },
+        { "s": 2, "a": 280, "label": "Beri penangguhan pada yang kesulitan, yang baik akan tahu" },
+        { "s": 2, "a": 216, "label": "Mungkin kamu membenci sesuatu yang sebenarnya baik bagimu" },
+        { "s": 94, "a": 6, "label": "Bersama kesulitan itu pasti ada kemudahan" }
+      ]
+    },
+    {
+      "key": "jodoh",
+      "judul": "Jodoh & Keluarga",
+      "ayat": [
+        { "s": 30, "a": 21, "label": "Cinta dan kasih sayang di antara pasangan" },
+        { "s": 2, "a": 187, "label": "Kamu pakaian bagi mereka, mereka pakaian bagimu" },
+        { "s": 24, "a": 26, "label": "Laki-laki baik untuk wanita yang baik" },
+        { "s": 24, "a": 32, "label": "Nikahkan yang masih sendiri" },
+        { "s": 25, "a": 74, "label": "Rabbana, anugerahkan istri dan keturunan sebagai penyejuk hati" }
+      ]
+    },
+    {
+      "key": "sakit",
+      "judul": "Sakit & Penyembuhan",
+      "ayat": [
+        { "s": 26, "a": 80, "label": "Jika aku sakit, Dialah yang menyembuhkanku" },
+        { "s": 10, "a": 57, "label": "Al-Qur'an adalah penawar dan rahmat bagi orang beriman" },
+        { "s": 17, "a": 82, "label": "Kami turunkan dari Al-Qur'an sesuatu penawar dan rahmat" }
+      ]
+    },
+    {
+      "key": "takut",
+      "judul": "Takut & Perlindungan",
+      "ayat": [
+        { "s": 3, "a": 173, "label": "Hasbunallah wa ni'mal wakil" },
+        { "s": 2, "a": 255, "label": "Ayat Kursi — Allah Maha Tinggi, Maha Besar" },
+        { "s": 33, "a": 56, "label": "Wahai orang beriman, shalawatilah Nabi" },
+        { "s": 12, "a": 64, "label": "Sebaik-baik pelindung, Dialah yang Maha Penyayang" }
+      ]
+    },
+    {
+      "key": "ikhtiar",
+      "judul": "Ikhtiar & Usaha",
+      "ayat": [
+        { "s": 13, "a": 11, "label": "Allah tak mengubah nasib suatu kaum hingga mereka berusaha" },
+        { "s": 29, "a": 69, "label": "Orang yang berusaha, Kutunjukkan jalan-Jalan Kami" },
+        { "s": 53, "a": 39, "label": "Manusia hanya mendapat hasil dari usahanya" },
+        { "s": 94, "a": 7, "label": "Setelah selesai pekerjaan, tetaplah bekerja keras" }
+      ]
+    },
+    {
+      "key": "ampunan",
+      "judul": "Ampunan & Taubat",
+      "ayat": [
+        { "s": 39, "a": 53, "label": "Jangan berputus asa — Allah mengampuni dosa semuanya" },
+        { "s": 3, "a": 135, "label": "Mereka memohon ampun di waktu pagi dan petang" },
+        { "s": 25, "a": 70, "label": "Bertobat dan beramal saleh — dosa dijadikan kebaikan" },
+        { "s": 66, "a": 8, "label": "Bertobatlah kepada Allah dengan taubat yang tulus" },
+        { "s": 2, "a": 222, "label": "Allah mencintai orang yang bertobat dan suci" }
+      ]
+    },
+    {
+      "key": "istiqamah",
+      "judul": "Istiqamah",
+      "ayat": [
+        { "s": 41, "a": 30, "label": "Jangan takut dan jangan bersedih — gembiralah dengan surga" },
+        { "s": 3, "a": 200, "label": "Bertahanlah, bersabarlah, dan tetaplah siaga" },
+        { "s": 90, "a": 17, "label": "Lalu ia termasuk orang-orang yang bersabar" },
+        { "s": 2, "a": 45, "label": "Mintalah pertolongan dengan sabar dan shalat" }
+      ]
+    }
+  ],
+  "rabbana": [
+    { "s": 2, "a": 126 }, { "s": 2, "a": 128 }, { "s": 2, "a": 129 }, { "s": 2, "a": 201 },
+    { "s": 2, "a": 250 }, { "s": 2, "a": 286 }, { "s": 3, "a": 8 }, { "s": 3, "a": 16 },
+    { "s": 3, "a": 147 }, { "s": 3, "a": 191 }, { "s": 3, "a": 193 }, { "s": 4, "a": 75 },
+    { "s": 5, "a": 83 }, { "s": 7, "a": 23 }, { "s": 7, "a": 47 }, { "s": 7, "a": 89 },
+    { "s": 10, "a": 85 }, { "s": 18, "a": 10 }, { "s": 20, "a": 25 }, { "s": 23, "a": 97 },
+    { "s": 23, "a": 109 }, { "s": 23, "a": 118 }, { "s": 25, "a": 65 }, { "s": 25, "a": 74 },
+    { "s": 27, "a": 19 }, { "s": 40, "a": 7 }, { "s": 44, "a": 12 }, { "s": 59, "a": 10 },
+    { "s": 60, "a": 5 }, { "s": 71, "a": 26 }
+  ],
+  "quick": [
+    { "judul": "Ayat Kursi", "s": 2, "a": 255 },
+    { "judul": "Al-Ikhlas", "s": 112, "a": 1 },
+    { "judul": "Al-Falaq", "s": 113, "a": 1 },
+    { "judul": "An-Nas", "s": 114, "a": 1 },
+    { "judul": "Doa menambah ilmu", "s": 20, "a": 114 },
+    { "judul": "Doa bepergian", "s": 43, "a": 14 },
+    { "judul": "Doa luasnya rezeki", "s": 20, "a": 25 }
+  ]
+}

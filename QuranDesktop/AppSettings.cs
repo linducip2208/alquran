@@ -4,6 +4,9 @@ namespace QuranDesktop;
 
 internal sealed class AppSettings
 {
+    private static AppSettings? _current;
+    public static AppSettings Current => _current ??= Load();
+
     public int Surah { get; set; } = 1;
     public int Ayah { get; set; } = 1;
     public string Qaree { get; set; } = "husary";
@@ -24,6 +27,7 @@ internal sealed class AppSettings
     public float Speed { get; set; } = 1f;
     public bool ReminderEnabled { get; set; } = false;
     public string ReminderTime { get; set; } = "20:00";
+    public bool ShowDailyAyah { get; set; } = true;
     public int Volume { get; set; } = 80;
     public float Zoom { get; set; } = 1f;
 
