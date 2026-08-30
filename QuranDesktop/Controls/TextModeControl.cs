@@ -26,7 +26,7 @@ internal sealed class TextModeControl : Panel
 
     public int SelectedIndex => _selectedIndex;
 
-    public void Render(List<AyahData> ayahs, Font arabicFont, Font transFont, bool transRtl)
+    public void Render(List<AyahData> ayahs, Font arabicFont, Font transFont, bool transRtl, Font tafsirFont)
     {
         foreach (var v in _views)
         {
@@ -39,7 +39,7 @@ internal sealed class TextModeControl : Panel
         int w = AyahWidth();
         foreach (var a in ayahs)
         {
-            var view = new AyahView(a, arabicFont, transFont, transRtl) { Width = w };
+            var view = new AyahView(a, arabicFont, transFont, transRtl, tafsirFont) { Width = w };
             view.AyahClicked += (s, e) =>
             {
                 if (s is AyahView av) AyahClicked?.Invoke(av.NumberInSurah);
@@ -74,6 +74,22 @@ internal sealed class TextModeControl : Panel
             {
             }
         }));
+    }
+
+    public void SetTranslationVisible(bool visible)
+    {
+        foreach (var v in _views)
+        {
+            v.SetTransVisible(visible);
+        }
+    }
+
+    public void SetTafsir(int ayahNumber, string? text, Font? font, bool rtl)
+    {
+        foreach (var v in _views)
+        {
+            v.SetTafsir(v.NumberInSurah == ayahNumber ? text : null, font, rtl);
+        }
     }
 
     private int AyahWidth() => Math.Max(200, _flp.ClientSize.Width - _flp.Padding.Horizontal - 4);

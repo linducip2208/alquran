@@ -30,13 +30,16 @@ Alternatif: [GitHub Releases](https://github.com/linducip2208/alquran/releases) 
 | 3 Mode Tampilan | **Mushaf** (buka-bukaan 2 halaman, ganjil kanan–genap kiri), **Teks & Terjemahan**, **Tes Hafalan (Hifz)** |
 | 3 Jenis Mushaf | Hafs, Rewayat Warsh, Hafs Tajweed (604 halaman, gambar asli server KSU) |
 | Klik Ayat di Mushaf | Klik langsung ayat pada halaman → highlight + arti + tafsir |
+| Overlay Arti di Mushaf | Teks arti melayang di atas halaman pada posisi tiap ayat (seperti situs asli) |
 | 43 Qari | Hafs lengkap + varian Warsh, Murattal/Mujawwad/Teacher (Husary, Abdul Basit, Minshawi, Sudais, Maher, Afasy, dll.) |
 | 22 Terjemahan | Indonesia, English (Saheeh International), Melayu, Arab (4 varian), Urdu, Rusia, dll. |
 | 9 Kitab Tafsir | **Tafsir Jalalain (Indonesia)**, Al-Muyassar, Ibn Kathir, As-Sa'dy, Al-Baghawy, Al-Qortoby, At-Tabary, I'rab, Tafhim (Rusia) |
+| Tafsir Inline | Tafsir tampil di bawah ayat terpilih pada mode Teks |
 | Talaqaa (Voice Translation) | Audio terjemahan: English, French, Urdu, Bosnian |
-| Pemutar Audio | Per-ayat, auto-next antar ayat & surah, repeat 1×–10×/∞, basmalah & audhubillah otomatis, volume |
+| Pemutar Audio | Per-ayat, auto-next antar ayat & surah, repeat 1×–10×/∞, **ulang rentang ayat**, **mode guru** (ayat diulang berkala untuk diikuti), basmalah & audhubillah otomatis, volume |
+| Tampilkan/Sembunyikan | Toggle arti, tafsir inline, panel tafsir, overlay mushaf — semua bisa dimatikan |
 | Navigasi Lengkap | Surah, Ayat, Halaman, Juz — seperti situs aslinya |
-| Pencarian | Cari kata/frasa di seluruh Al-Qur'an → langsung lompat ke ayat |
+| Pencarian | Cari kata/frasa di seluruh Al-Qur'an → langsung lompat ke ayat + **hasil ditandai cincin biru di mushaf** |
 | Mode Hifz | Soal hafalan acak dari rentang surah/ayat, sembunyi/tampil teks, putar audio |
 | Indikator Sajdah | Ayat sajdah wajib / disunnahkan di status bar |
 | Unduh Massal | Download semua/rentang halaman mushaf untuk baca offline |

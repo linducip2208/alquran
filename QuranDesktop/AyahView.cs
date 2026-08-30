@@ -8,6 +8,7 @@ internal sealed class AyahView : Panel
 
     private readonly Label _arabic = new();
     private readonly Label _trans = new();
+    private readonly Label _tafsir = new();
     private bool _hover;
     private bool _selected;
 
@@ -15,7 +16,7 @@ internal sealed class AyahView : Panel
 
     public int NumberInSurah { get; }
 
-    public AyahView(AyahData ayah, Font arabicFont, Font transFont, bool transRtl)
+    public AyahView(AyahData ayah, Font arabicFont, Font transFont, bool transRtl, Font tafsirFont)
     {
         DoubleBuffered = true;
         NumberInSurah = ayah.NumberInSurah;
@@ -43,10 +44,20 @@ internal sealed class AyahView : Panel
         _trans.Cursor = Cursors.Hand;
         _trans.Visible = !string.IsNullOrWhiteSpace(ayah.Translation);
 
+        _tafsir.BackColor = Color.Transparent;
+        _tafsir.TextAlign = ContentAlignment.TopRight;
+        _tafsir.RightToLeft = RightToLeft.Yes;
+        _tafsir.ForeColor = Color.FromArgb(146, 96, 6);
+        _tafsir.Padding = new Padding(0, 0, 0, 2);
+        _tafsir.Cursor = Cursors.Hand;
+        _tafsir.Font = tafsirFont;
+        _tafsir.Visible = false;
+
         Controls.Add(_arabic);
         Controls.Add(_trans);
+        Controls.Add(_tafsir);
 
-        foreach (Control c in new Control[] { this, _arabic, _trans })
+        foreach (Control c in new Control[] { this, _arabic, _trans, _tafsir })
         {
             c.Click += (s, e) => AyahClicked?.Invoke(this, EventArgs.Empty);
             c.MouseEnter += (s, e) => { _hover = true; UpdateBack(); };
@@ -67,6 +78,29 @@ internal sealed class AyahView : Panel
         }
     }
 
+    public void SetTransVisible(bool visible)
+    {
+        _trans.Visible = visible && !string.IsNullOrWhiteSpace(_trans.Text);
+        LayoutChildren();
+    }
+
+    public void SetTafsir(string? text, Font? font, bool rtl)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            _tafsir.Visible = false;
+        }
+        else
+        {
+            _tafsir.Text = text;
+            if (font != null) _tafsir.Font = font;
+            _tafsir.TextAlign = rtl ? ContentAlignment.TopRight : ContentAlignment.TopLeft;
+            _tafsir.RightToLeft = rtl ? RightToLeft.Yes : RightToLeft.No;
+            _tafsir.Visible = true;
+        }
+        LayoutChildren();
+    }
+
     private void UpdateBack() => BackColor = _selected ? SelectedColor : _hover ? HoverColor : NormalColor;
 
     private void LayoutChildren()
@@ -84,6 +118,12 @@ internal sealed class AyahView : Panel
         {
             _trans.SetBounds(Padding.Left, y, w, MeasureHeight(_trans, w));
             y += _trans.Height;
+        }
+
+        if (_tafsir.Visible)
+        {
+            _tafsir.SetBounds(Padding.Left, y, w, MeasureHeight(_tafsir, w));
+            y += _tafsir.Height;
         }
 
         Height = y + Padding.Bottom;

@@ -25,6 +25,8 @@ internal sealed class SearchDialog : Form
 
     public (int Surah, int Ayah)? Selected { get; private set; }
 
+    public List<SearchResult> Results { get; private set; } = new();
+
     public SearchDialog(string? initialQuery)
     {
         Text = "Pencarian Al-Qur'an — KSU";
@@ -68,6 +70,7 @@ internal sealed class SearchDialog : Form
         try
         {
             var results = await ProgramServices.Api.SearchAsync(q, CancellationToken.None);
+            Results = results;
             foreach (var r in results)
             {
                 var info = SurahList.Get(r.Surah);

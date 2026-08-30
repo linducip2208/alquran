@@ -33,6 +33,21 @@ internal sealed class MushafView : Panel
     public event Action? ImageChanged;
 
     public Func<int, int, string>? TooltipProvider { get; set; }
+    public Func<int, int, string>? OverlayProvider { get; set; }
+    public bool ShowOverlay { get; set; }
+
+    public HashSet<(int Surah, int Ayah)> SearchHits { get; } = new();
+
+    public void SetSearchHits(IEnumerable<(int Surah, int Ayah)> hits)
+    {
+        SearchHits.Clear();
+        foreach (var h in hits)
+        {
+            SearchHits.Add(h);
+        }
+        _left.Pic.Invalidate();
+        _right.Pic.Invalidate();
+    }
 
     public int CurrentPage { get; private set; } = -1;
 
@@ -258,15 +273,96 @@ internal sealed class MushafView : Panel
 
         foreach (var (key, pt) in box.Hilites)
         {
+            var parts = key.Split('_');
+            if (parts.Length != 2 || !int.TryParse(parts[0], out int s) || !int.TryParse(parts[1], out int a)) continue;
+            bool isSel = _selected.HasValue && _selected.Value.Surah == s && _selected.Value.Ayah == a;
             float x = pt[0] * sc, y = pt[1] * sc;
-            bool isSel = _selected.HasValue && key == $"{_selected.Value.Surah}_{_selected.Value.Ayah}";
             float r = isSel ? 30f : 15f;
 
-            using var fill = new SolidBrush(Color.FromArgb(isSel ? 110 : 42, 255, 214, 64));
-            using var pen = new Pen(isSel ? Color.FromArgb(210, 210, 40, 40) : Color.FromArgb(60, 180, 140, 0), isSel ? 3f : 1.4f);
-            e.Graphics.FillEllipse(fill, x - r, y - r, r * 2, r * 2);
-            e.Graphics.DrawEllipse(pen, x - r, y - r, r * 2, r * 2);
+            using (var fill = new SolidBrush(Color.FromArgb(isSel ? 110 : 42, 255, 214, 64)))
+            using (var pen = new Pen(isSel ? Color.FromArgb(210, 210, 40, 40) : Color.FromArgb(60, 180, 140, 0), isSel ? 3f : 1.4f))
+            {
+                e.Graphics.FillEllipse(fill, x - r, y - r, r * 2, r * 2);
+                e.Graphics.DrawEllipse(pen, x - r, y - r, r * 2, r * 2);
+            }
+
+            if (!isSel && SearchHits.Contains((s, a)))
+            {
+                using var ring = new Pen(Color.FromArgb(200, 40, 110, 220), 3f);
+                e.Graphics.DrawEllipse(ring, x - 22, y - 22, 44, 44);
+            }
+
+            if (ShowOverlay && OverlayProvider != null)
+            {
+                var text = OverlayProvider(s, a);
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    DrawOverlay(e.Graphics, pic, box, x, y, text);
+                }
+            }
         }
+    }
+
+    private void DrawOverlay(Graphics g, PictureBox pic, PageBox box, float x, float y, string text)
+    {
+        float sc = box.Scale;
+        float fontSize = Math.Clamp(9f * sc, 6.5f, 15f);
+        using var font = new Font("Segoe UI", fontSize);
+        float maxW = Math.Clamp(260f * sc, 130f, pic.Width - 20f);
+        var lines = WrapText(g, text, font, maxW);
+        if (lines.Count == 0) return;
+
+        float lineH = font.GetHeight(g) + 2f;
+        float pad = 5f;
+        float boxW = 0f;
+        foreach (var line in lines)
+        {
+            float lw = g.MeasureString(line, font).Width;
+            if (lw > boxW) boxW = lw;
+        }
+        boxW += pad * 2;
+        float boxH = lines.Count * lineH + pad * 2;
+
+        float bx = x + 14f;
+        if (bx + boxW > pic.Width - 4f) bx = x - 14f - boxW;
+        float by = y + 10f;
+        if (by + boxH > pic.Height - 4f) by = Math.Max(4f, pic.Height - boxH - 4f);
+
+        using var bg = new SolidBrush(Color.FromArgb(215, 255, 253, 238));
+        using var border = new Pen(Color.FromArgb(190, 160, 120, 40), 1.2f);
+        using var textBrush = new SolidBrush(Color.FromArgb(60, 45, 20));
+
+        g.FillRectangle(bg, bx, by, boxW, boxH);
+        g.DrawRectangle(border, bx, by, boxW, boxH);
+
+        float ty = by + pad;
+        foreach (var line in lines)
+        {
+            g.DrawString(line, font, textBrush, bx + pad, ty);
+            ty += lineH;
+        }
+    }
+
+    private static List<string> WrapText(Graphics g, string text, Font font, float maxW)
+    {
+        var result = new List<string>();
+        var current = new System.Text.StringBuilder();
+        foreach (var word in text.Replace('\n', ' ').Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string candidate = current.Length == 0 ? word : current + " " + word;
+            if (g.MeasureString(candidate, font).Width <= maxW)
+            {
+                current.Append(current.Length == 0 ? word : " " + word);
+            }
+            else
+            {
+                if (current.Length > 0) result.Add(current.ToString());
+                current.Clear();
+                current.Append(word);
+            }
+        }
+        if (current.Length > 0) result.Add(current.ToString());
+        return result;
     }
 
     protected override void OnResize(EventArgs eventargs)

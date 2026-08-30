@@ -16,6 +16,10 @@ internal sealed class AppSettings
     public bool AutoNext { get; set; } = true;
     public bool PlayOnClick { get; set; } = true;
     public bool ShowTafsirPanel { get; set; } = true;
+    public bool ShowTranslation { get; set; } = true;
+    public bool ShowInlineTafsir { get; set; } = false;
+    public bool ShowMushafOverlay { get; set; } = false;
+    public bool TeacherMode { get; set; } = false;
     public int Volume { get; set; } = 80;
     public float Zoom { get; set; } = 1f;
 

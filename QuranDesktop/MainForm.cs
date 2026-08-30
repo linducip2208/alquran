@@ -16,16 +16,21 @@ internal sealed class MainForm : Form
     private bool _introPlayed;
     private int _basmalaSurah = -1;
     private int _repeatRemaining;
+    private int _rangeLoopsRemaining;
     private bool _uiBusy;
     private List<AyahData> _curAyahs = new();
     private readonly Dictionary<string, Dictionary<int, string>> _tarjamaLocal = new();
     private int _lastTafsirS;
     private int _lastTafsirA;
     private Button _btnOpenTafsir = new();
+    private readonly HashSet<(int Surah, int Ayah)> _searchHits = new();
 
     private readonly Font _arabicFont = ResolveFont(
         new[] { "KFGQPC HAFS Uthmanic Script", "KFGQPC Uthmanic Script HAFS", "Scheherazade New", "Amiri", "Traditional Arabic" },
         22f);
+    private readonly Font _tafsirFont = ResolveFont(
+        new[] { "Traditional Arabic", "Scheherazade New", "Amiri", "Segoe UI" },
+        14f);
     private readonly Font _transFont = new("Segoe UI", 10.5f);
 
     private ComboBox _cmbMode = new();
@@ -51,6 +56,13 @@ internal sealed class MainForm : Form
     private CheckBox _chkAutoNext = new();
     private CheckBox _chkPlayOnClick = new();
     private CheckBox _chkTafsirPanel = new();
+    private CheckBox _chkShowTrans = new();
+    private CheckBox _chkInlineTafsir = new();
+    private CheckBox _chkOverlay = new();
+    private CheckBox _chkTeacher = new();
+    private CheckBox _chkRepeatRange = new();
+    private NumericUpDown _numRangeFrom = new();
+    private NumericUpDown _numRangeTo = new();
     private TrackBar _trackVolume = new();
     private TextBox _txtSearch = new();
     private Button _btnSearch = new();
@@ -82,6 +94,20 @@ internal sealed class MainForm : Form
         ApplySettingsToUi();
         WireEvents();
         SwitchMode(_settings.Mode);
+
+        _mushafView.ShowOverlay = _settings.ShowMushafOverlay;
+        _mushafView.OverlayProvider = OverlayTextForAyah;
+    }
+
+    private string OverlayTextForAyah(int surah, int ayah)
+    {
+        var t = CurrentTranslation;
+        if (t == null || t.Key == "ar_ayat" || !_chkShowTrans.Checked) return "";
+        if (_tarjamaLocal.TryGetValue(t.Key + "|" + surah, out var map) && map.TryGetValue(ayah, out var text))
+        {
+            return KsuApi.StripHtml(text).Replace('\n', ' ');
+        }
+        return "";
     }
 
     private static Font ResolveFont(string[] candidates, float size)
@@ -143,9 +169,11 @@ internal sealed class MainForm : Form
         flow1.Controls.Add(_btnPageNext);
         flow1.Controls.Add(new Label { Text = "Juz:", AutoSize = true, Padding = new Padding(4, 8, 0, 0) });
         flow1.Controls.Add(_cmbJuz);
+        _chkOverlay = new CheckBox { Text = "Arti di mushaf", AutoSize = true, Padding = new Padding(6, 6, 0, 0) };
         flow1.Controls.Add(_btnZoomIn);
         flow1.Controls.Add(_btnZoomOut);
         flow1.Controls.Add(_btnDownload);
+        flow1.Controls.Add(_chkOverlay);
 
         _cmbQaree = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240, DropDownWidth = 270, FlatStyle = FlatStyle.Flat };
         _cmbTrans = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220, DropDownWidth = 250, FlatStyle = FlatStyle.Flat };
@@ -171,6 +199,12 @@ internal sealed class MainForm : Form
         _chkAutoNext = new CheckBox { Text = "Lanjut otomatis", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
         _chkPlayOnClick = new CheckBox { Text = "Klik ayat = putar", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
         _chkTafsirPanel = new CheckBox { Text = "Panel tafsir", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
+        _chkShowTrans = new CheckBox { Text = "Arti", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
+        _chkInlineTafsir = new CheckBox { Text = "Tafsir inline", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
+        _chkTeacher = new CheckBox { Text = "Mode guru", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
+        _chkRepeatRange = new CheckBox { Text = "Ulang rentang", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
+        _numRangeFrom = new NumericUpDown { Minimum = 1, Maximum = 286, Value = 1, Width = 58 };
+        _numRangeTo = new NumericUpDown { Minimum = 1, Maximum = 286, Value = 5, Width = 58 };
         _trackVolume = new TrackBar { Minimum = 0, Maximum = 100, Width = 110, TickStyle = TickStyle.None };
         _txtSearch = new TextBox { Width = 170 };
         _btnSearch = new Button { Text = "🔍 Cari", Width = 76 };
@@ -181,6 +215,13 @@ internal sealed class MainForm : Form
         flow3.Controls.Add(_btnNextAya);
         flow3.Controls.Add(_chkAutoNext);
         flow3.Controls.Add(_chkPlayOnClick);
+        flow3.Controls.Add(_chkShowTrans);
+        flow3.Controls.Add(_chkInlineTafsir);
+        flow3.Controls.Add(_chkTeacher);
+        flow3.Controls.Add(_chkRepeatRange);
+        flow3.Controls.Add(_numRangeFrom);
+        flow3.Controls.Add(new Label { Text = "–", AutoSize = true, Padding = new Padding(0, 8, 0, 0) });
+        flow3.Controls.Add(_numRangeTo);
         flow3.Controls.Add(new Label { Text = "Vol:", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
         flow3.Controls.Add(_trackVolume);
         flow3.Controls.Add(new Label { Text = "Cari:", AutoSize = true, Padding = new Padding(8, 8, 0, 0) });
@@ -333,6 +374,13 @@ internal sealed class MainForm : Form
         _chkAutoNext.Checked = _settings.AutoNext;
         _chkPlayOnClick.Checked = _settings.PlayOnClick;
         _chkTafsirPanel.Checked = _settings.ShowTafsirPanel;
+        _chkShowTrans.Checked = _settings.ShowTranslation;
+        _chkInlineTafsir.Checked = _settings.ShowInlineTafsir;
+        _chkOverlay.Checked = _settings.ShowMushafOverlay;
+        _chkTeacher.Checked = _settings.TeacherMode;
+        _numRangeFrom.Maximum = QuranData.SurahAyahCount(_curSurah);
+        _numRangeTo.Maximum = _numRangeFrom.Maximum;
+        _numRangeTo.Value = Math.Min(_settings.Ayah + 4, (int)_numRangeTo.Maximum);
         _trackVolume.Value = Math.Clamp(_settings.Volume, 0, 100);
 
         _uiBusy = false;
@@ -577,6 +625,63 @@ internal sealed class MainForm : Form
             _tafsirPanel.Visible = _chkTafsirPanel.Checked;
         };
 
+        _chkShowTrans.CheckedChanged += (_, _) =>
+        {
+            _settings.ShowTranslation = _chkShowTrans.Checked;
+            _settings.Save();
+            _textMode.SetTranslationVisible(_chkShowTrans.Checked);
+            if (CurrentMode == "mushaf" && _mushafView.CurrentPage > 0)
+            {
+                UpdateMushafInfo(_curSurah, _curAyah);
+            }
+        };
+
+        _chkInlineTafsir.CheckedChanged += async (_, _) =>
+        {
+            _settings.ShowInlineTafsir = _chkInlineTafsir.Checked;
+            _settings.Save();
+            if (CurrentMode == "teks" && _chkInlineTafsir.Checked && _curAyahs.Count > 0)
+            {
+                await LoadInlineTafsirAsync(_curSurah, _curAyah);
+            }
+        };
+
+        _chkOverlay.CheckedChanged += (_, _) =>
+        {
+            _settings.ShowMushafOverlay = _chkOverlay.Checked;
+            _settings.Save();
+            _mushafView.ShowOverlay = _chkOverlay.Checked;
+        };
+
+        _chkTeacher.CheckedChanged += (_, _) =>
+        {
+            _settings.TeacherMode = _chkTeacher.Checked;
+            _settings.Save();
+            ShowStatus(_chkTeacher.Checked
+                ? "Mode guru AKTIF — tiap ayat diulang 3× dengan jeda"
+                : "Mode guru nonaktif");
+        };
+
+        _chkRepeatRange.CheckedChanged += (_, _) =>
+        {
+            if (_chkRepeatRange.Checked)
+            {
+                int from = (int)_numRangeFrom.Value;
+                int to = (int)_numRangeTo.Value;
+                ShowStatus($"Ulang rentang AKTIF — ayat {from}–{to} akan diulang {CurrentRepeat}× per putaran");
+            }
+            else
+            {
+                _rangeLoopsRemaining = 0;
+                ShowStatus("Ulang rentang nonaktif");
+            }
+        };
+
+        _numRangeFrom.ValueChanged += (_, _) =>
+        {
+            if (_numRangeFrom.Value > _numRangeTo.Value) _numRangeTo.Value = _numRangeFrom.Value;
+        };
+
         _trackVolume.ValueChanged += (_, _) =>
         {
             _audio.VolumePercent = _trackVolume.Value;
@@ -630,7 +735,7 @@ internal sealed class MainForm : Form
     {
         _textMode.Visible = mode == "teks";
         _mushafView.Visible = mode == "mushaf";
-        _mushafRight.Visible = mode == "mushaf";
+        _mushafRight.Visible = mode == "mushaf" && _chkShowTrans.Checked;
         _hifz.Visible = mode == "hifz";
         _btnPagePrev.Visible = _cmbPage.Visible = _btnPageNext.Visible = mode == "mushaf";
         _cmbJuz.Visible = mode == "mushaf";
@@ -689,7 +794,8 @@ internal sealed class MainForm : Form
         }
 
         _curAyahs = list;
-        _textMode.Render(list, _arabicFont, _transFont, trans?.Rtl ?? false);
+        _textMode.Render(list, _arabicFont, _transFont, trans?.Rtl ?? false, _tafsirFont);
+        _textMode.SetTranslationVisible(_chkShowTrans.Checked);
         _renderedSurah = surah;
     }
 
@@ -718,6 +824,8 @@ internal sealed class MainForm : Form
         _cmbSurah.SelectedIndex = surah - 1;
         FillAyatCombo(surah);
         _cmbAyah.SelectedIndex = ayah - 1;
+        _numRangeFrom.Maximum = QuranData.SurahAyahCount(surah);
+        _numRangeTo.Maximum = _numRangeFrom.Maximum;
         var mt = CurrentMushafType;
         if (mt != null)
         {
@@ -746,6 +854,10 @@ internal sealed class MainForm : Form
         }
 
         UpdateTafsirPanel(surah, ayah);
+        if (CurrentMode == "teks" && _chkInlineTafsir.Checked)
+        {
+            _ = LoadInlineTafsirAsync(surah, ayah);
+        }
 
         var info = SurahList.Get(surah);
         string status = $"Surah {surah}. {info.EnglishName} — ayat {ayah}/{QuranData.SurahAyahCount(surah)}";
@@ -852,7 +964,7 @@ internal sealed class MainForm : Form
         try
         {
             var t = CurrentTranslation;
-            if (t != null)
+            if (t != null && _chkShowTrans.Checked)
             {
                 var map = await TarjamaAsync(t.Key, surah);
                 if (map.TryGetValue(ayah, out var text))
@@ -907,8 +1019,43 @@ internal sealed class MainForm : Form
         using var dlg = new Controls.SearchDialog(_txtSearch.Text);
         if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Selected.HasValue)
         {
+            _searchHits.Clear();
+            foreach (var r in dlg.Results)
+            {
+                _searchHits.Add((r.Surah, r.Ayah));
+            }
+            _mushafView.SetSearchHits(_searchHits);
+
             var (s, a) = dlg.Selected.Value;
             _ = GotoAyahAsync(s, a);
+        }
+    }
+
+    private async Task LoadInlineTafsirAsync(int surah, int ayah)
+    {
+        var author = CurrentTafsirKey;
+        if (author == null) return;
+        try
+        {
+            var raw = await ProgramServices.Api.GetTafsirAsync(author, surah, ayah, CancellationToken.None);
+            if (_curSurah != surah || _curAyah != ayah || CurrentMode != "teks" || !_chkInlineTafsir.Checked) return;
+
+            string html = raw;
+            int sep = raw.IndexOf("|||", StringComparison.Ordinal);
+            if (sep >= 0) html = raw[(sep + 3)..];
+
+            var opt = Tafsirs.Find(author);
+            bool arabic = opt?.IsArabic ?? true;
+            string text = KsuApi.StripHtml(html);
+            if (text.Length > 1200) text = text[..1200] + "…";
+            _textMode.SetTafsir(ayah, text, arabic ? _tafsirFont : _transFont, arabic);
+        }
+        catch (Exception ex)
+        {
+            if (_curSurah == surah && _curAyah == ayah)
+            {
+                _textMode.SetTafsir(ayah, "(Gagal memuat tafsir: " + ex.Message + ")", _transFont, false);
+            }
         }
     }
 
@@ -949,6 +1096,10 @@ internal sealed class MainForm : Form
 
         _playQueue.Enqueue(KsuAudio.AyahUrl(folder, surah, ayah));
         _repeatRemaining = CurrentRepeat;
+        if (_chkRepeatRange.Checked)
+        {
+            _rangeLoopsRemaining = CurrentRepeat;
+        }
 
         UpdatePlayButton();
         _ = PlayNextInQueueAsync(token);
@@ -1007,6 +1158,12 @@ internal sealed class MainForm : Form
         if (token != _playToken) return;
         UpdatePlayButton();
 
+        if (_chkTeacher.Checked)
+        {
+            _ = TeacherReplayAsync(token);
+            return;
+        }
+
         if (_repeatRemaining == -1 || _repeatRemaining > 1)
         {
             if (_repeatRemaining > 0) _repeatRemaining--;
@@ -1024,39 +1181,73 @@ internal sealed class MainForm : Form
             return;
         }
 
-        if (_chkAutoNext.Checked)
+        if (!_chkAutoNext.Checked)
         {
-            PlayAyah(_curSurah, _curAyah, withIntro: false);
-            return;
-        }
-        if (_repeatRemaining > 1)
-        {
-            _repeatRemaining--;
-            PlayAyah(_curSurah, _curAyah, withIntro: false);
+            ShowStatus("Selesai");
             return;
         }
 
-        if (_chkAutoNext.Checked)
+        int nextS = _curSurah;
+        int nextA = _curAyah + 1;
+
+        if (_chkRepeatRange.Checked)
         {
-            if (_curAyah < QuranData.SurahAyahCount(_curSurah))
+            int from = (int)_numRangeFrom.Value;
+            int to = (int)_numRangeTo.Value;
+            if (nextA > to)
             {
-                _ = GotoAyahAsync(_curSurah, _curAyah + 1).ContinueWith(_ =>
-                    PlayAyah(_curSurah, _curAyah, withIntro: false), TaskScheduler.FromCurrentSynchronizationContext());
+                if (_rangeLoopsRemaining == -1 || _rangeLoopsRemaining > 1)
+                {
+                    if (_rangeLoopsRemaining > 0) _rangeLoopsRemaining--;
+                    nextA = from;
+                }
+                else
+                {
+                    ShowStatus($"Rentang {from}–{to} selesai");
+                    return;
+                }
             }
-            else if (_curSurah < 114)
-            {
-                _ = GotoAyahAsync(_curSurah + 1, 1).ContinueWith(_ =>
-                    PlayAyah(_curSurah, _curAyah, withIntro: false), TaskScheduler.FromCurrentSynchronizationContext());
-            }
-            else
-            {
-                ShowStatus("Selesai — 114 surah tamat");
-            }
+            nextA = Math.Clamp(nextA, 1, QuranData.SurahAyahCount(nextS));
+            _ = GotoAyahAsync(nextS, nextA).ContinueWith(_ =>
+                PlayAyah(_curSurah, _curAyah, withIntro: false), TaskScheduler.FromCurrentSynchronizationContext());
+            return;
+        }
+
+        if (nextA <= QuranData.SurahAyahCount(_curSurah))
+        {
+            _ = GotoAyahAsync(nextS, nextA).ContinueWith(_ =>
+                PlayAyah(_curSurah, _curAyah, withIntro: false), TaskScheduler.FromCurrentSynchronizationContext());
+        }
+        else if (_curSurah < 114)
+        {
+            _ = GotoAyahAsync(_curSurah + 1, 1).ContinueWith(_ =>
+                PlayAyah(_curSurah, _curAyah, withIntro: false), TaskScheduler.FromCurrentSynchronizationContext());
         }
         else
         {
-            ShowStatus("Selesai");
+            ShowStatus("Selesai — 114 surah tamat");
         }
+    }
+
+    private async Task TeacherReplayAsync(int token)
+    {
+        try
+        {
+            await Task.Delay(2600);
+        }
+        catch
+        {
+        }
+        if (token != _playToken || !_chkTeacher.Checked || !IsHandleCreated) return;
+
+        var reciter = CurrentReciter;
+        var pb = CurrentPb;
+        if (reciter == null && pb == null) return;
+        string folder = pb?.Folder ?? reciter!.Folder;
+
+        _playQueue.Clear();
+        _playQueue.Enqueue(KsuAudio.AyahUrl(folder, _curSurah, _curAyah));
+        await PlayNextInQueueAsync(token);
     }
 
     private void StopPlayback(string message)
