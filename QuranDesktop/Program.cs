@@ -1,0 +1,31 @@
+namespace QuranDesktop;
+
+static class Program
+{
+    [STAThread]
+    static void Main()
+    {
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (s, e) => Log(e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (s, e) => Log(e.ExceptionObject as Exception);
+
+        ApplicationConfiguration.Initialize();
+        Application.Run(new MainForm());
+    }
+
+    internal static void Log(Exception? ex)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "QuranDesktop");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, "error.log"),
+                DateTime.Now + Environment.NewLine + ex + Environment.NewLine + "----" + Environment.NewLine);
+        }
+        catch
+        {
+        }
+    }
+}
