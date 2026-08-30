@@ -9,6 +9,12 @@ Aplikasi Al-Qur'an desktop (Windows Forms / C# .NET 7) yang dibuat ulang berdasa
 
 ---
 
+## Tampilan
+
+![Ayat — quran.ksu.edu.sa versi Windows](docs/screenshots/ayat-ksu-edu.png)
+
+---
+
 ## Fitur
 
 | Fitur | Keterangan |
