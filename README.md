@@ -89,11 +89,7 @@ Semua konten di aplikasi ini diambil langsung dari server **[quran.ksu.edu.sa](h
 
 **Cara termudah — exe portable (tidak perlu install apa pun):**
 
-```
-QuranDesktop\bin\Release\net7.0-windows\win-x64\publish\QuranDesktop.exe
-```
-
-Cukup copy 1 file exe itu ke PC/laptop Windows 10 atau 11 mana saja.
+Unduh dari [Google Drive](https://drive.google.com/drive/folders/1A0AvGWNaHMU2bZtrvoES25RUh-pr6VMx?usp=sharing) atau [GitHub Releases](https://github.com/linducip2208/alquran/releases), lalu jalankan `QuranDesktop.exe`.
 
 **Dari source code:**
 
