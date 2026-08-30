@@ -1,3 +1,5 @@
+﻿using QuranDesktop.Controls;
+
 namespace QuranDesktop;
 
 internal sealed class MainForm : Form
@@ -5,7 +7,7 @@ internal sealed class MainForm : Form
     private const int MM_MCINOTIFY = 0x3B9;
 
     private readonly AppSettings _settings = AppSettings.Load();
-    private readonly MciAudio _audio = new();
+    private readonly IAudioEngine _audio;
     private readonly Queue<string> _playQueue = new();
 
     private CancellationTokenSource? _playCts;
@@ -79,9 +81,41 @@ internal sealed class MainForm : Form
     private Label _tafsirHeader = new();
     private Panel _center = new();
     private readonly ToolTip _stripTip = new();
+    private Panel _topContainer = new();
+    private Button _btnStar = new();
+    private Button _btnCard = new();
+    private Button _btnFeatures = new();
+    private TrackBar _trackSpeed = new();
+    private MiniPlayerForm? _mini;
+    private NotifyIcon? _trayIcon;
+    private System.Windows.Forms.Timer? _reminderTimer;
+    private bool _reminderFiredToday;
+    private readonly List<PlaylistEntry> _playlist = new();
+    private int _playlistIndex = -1;
+    private bool _playingPlaylist;
+    private string? _playlistFolder;
+    private bool _focusMode;
 
     public MainForm()
     {
+        WmpEngine wmp = new();
+        _audio = wmp.Available ? wmp : new MciEngine();
+        _audio.VolumePercent = Math.Clamp(_settings.Volume, 0, 100);
+        _audio.Finished += () =>
+        {
+            try
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    UpdatePlayButton();
+                    _ = PlayNextInQueueAsync(_playToken);
+                }));
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        };
+
         Text = "Quran Desktop — KSU Electronic Moshaf (WinForms)";
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(1250, 850);
@@ -128,16 +162,19 @@ internal sealed class MainForm : Form
 
     private void BuildUi()
     {
-        var topContainer = new Panel { Dock = DockStyle.Top, Height = 116 };
+        _topContainer = new Panel { Dock = DockStyle.Top, Height = 156 };
 
         var flow1 = MakeFlow();
         var flow2 = MakeFlow();
         var flow3 = MakeFlow();
-        topContainer.Controls.Add(flow3);
-        topContainer.Controls.Add(flow2);
-        topContainer.Controls.Add(flow1);
+        var flow4 = MakeFlow();
+        _topContainer.Controls.Add(flow4);
+        _topContainer.Controls.Add(flow3);
+        _topContainer.Controls.Add(flow2);
+        _topContainer.Controls.Add(flow1);
         flow1.BringToFront();
         flow2.BringToFront();
+        flow3.BringToFront();
 
         _cmbMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150, FlatStyle = FlatStyle.Flat };
         _cmbMode.Items.Add(new ComboItem("Teks & Terjemahan", "teks"));
@@ -300,11 +337,25 @@ internal sealed class MainForm : Form
             Font = new Font("Segoe UI", 9.5f),
         };
 
+        _btnStar = new Button { Text = "★ Bookmark", Width = 96 };
+        _btnCard = new Button { Text = "Kartu Ayat", Width = 86 };
+        _btnFeatures = new Button { Text = "Fitur Lainnya", Width = 104 };
+        _trackSpeed = new TrackBar { Minimum = 5, Maximum = 20, TickFrequency = 5, Width = 110, TickStyle = TickStyle.None };
+
+        var lblSpeedVal = new Label { Text = "1.0×", AutoSize = true, Padding = new Padding(0, 10, 0, 0) };
+        flow4.Controls.Add(_btnStar);
+        flow4.Controls.Add(_btnCard);
+        flow4.Controls.Add(_btnFeatures);
+        flow4.Controls.Add(new Label { Text = "Speed:", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
+        flow4.Controls.Add(_trackSpeed);
+        flow4.Controls.Add(lblSpeedVal);
+        _trackSpeed.ValueChanged += (_, _) => lblSpeedVal.Text = (_trackSpeed.Value / 10.0).ToString("0.0") + "×";
+
         Controls.Add(_center);
         Controls.Add(_tafsirPanel);
         Controls.Add(_lblStatus);
-        Controls.Add(topContainer);
-        topContainer.BringToFront();
+        Controls.Add(_topContainer);
+        _topContainer.BringToFront();
         _lblStatus.BringToFront();
     }
 
@@ -682,6 +733,92 @@ internal sealed class MainForm : Form
             if (_numRangeFrom.Value > _numRangeTo.Value) _numRangeTo.Value = _numRangeFrom.Value;
         };
 
+        _btnStar.Click += (_, _) =>
+        {
+            ProgressStore.ToggleBookmark(_curSurah, _curAyah);
+            bool now = ProgressStore.IsBookmarked(_curSurah, _curAyah);
+            ShowStatus(now ? $"★ Bookmark ditambahkan: QS {_curSurah}:{_curAyah}" : $"Bookmark dihapus: QS {_curSurah}:{_curAyah}");
+        };
+
+        _btnCard.Click += async (_, _) =>
+        {
+            try
+            {
+                ShowStatus("Menyiapkan kartu ayat…");
+                var arabic = await TarjamaAsync("ar_ayat", _curSurah);
+                string arab = arabic.TryGetValue(_curAyah, out var a) ? a : "";
+                string arti = "";
+                var t = CurrentTranslation;
+                if (t != null)
+                {
+                    var m = await TarjamaAsync(t.Key, _curSurah);
+                    arti = m.TryGetValue(_curAyah, out var v) ? KsuApi.StripHtml(v) : "";
+                }
+                using var dlg = new AyahImageDialog(_curSurah, _curAyah, arab, arti);
+                dlg.ShowDialog(this);
+            }
+            catch (Exception ex)
+            {
+                ShowStatus("Gagal: " + ex.Message, error: true);
+            }
+        };
+
+        var featuresMenu = new ContextMenuStrip();
+        featuresMenu.Items.Add("Target Khatam", null, (_, _) =>
+        {
+            using var d = new KhatamDialog();
+            d.ShowDialog(this);
+        });
+        featuresMenu.Items.Add("Peta Hafalan (604 halaman)", null, (_, _) =>
+        {
+            using var d = new HeatmapDialog(1, QuranData.PageCount("Page"));
+            d.ShowDialog(this);
+        });
+        featuresMenu.Items.Add("Kuis: Lanjutannya?", null, (_, _) =>
+        {
+            using var d = new QuizDialog(_curSurah);
+            d.ShowDialog(this);
+        });
+        featuresMenu.Items.Add("Playlist Surah", null, (_, _) =>
+        {
+            var r = CurrentReciter;
+            using var d = new PlaylistDialog(_curSurah, r?.Key ?? "husary", r?.Display ?? "Husary");
+            d.PlayRequested += list => StartPlaylist(list);
+            d.ShowDialog(this);
+        });
+        featuresMenu.Items.Add("Unduh Audio Surah", null, (_, _) =>
+        {
+            var r = CurrentReciter;
+            using var d = new AudioDownloadDialog(r?.Key ?? "husary", _curSurah);
+            d.ShowDialog(this);
+        });
+        featuresMenu.Items.Add("Mini Player", null, (_, _) => ToggleMiniPlayer());
+        featuresMenu.Items.Add("Pengingat Harian", null, (_, _) =>
+        {
+            TimeSpan cur = TimeSpan.TryParse(_settings.ReminderTime, out var tt) ? tt : new TimeSpan(20, 0, 0);
+            using var d = new ReminderDialog(_settings.ReminderEnabled, cur);
+            if (d.ShowDialog(this) == DialogResult.OK)
+            {
+                _settings.ReminderEnabled = d.EnabledReminder;
+                _settings.ReminderTime = d.Time.ToString(@"hh\:mm");
+                _settings.Save();
+                _reminderFiredToday = false;
+                ShowStatus(d.EnabledReminder ? $"Pengingat aktif jam {d.Time:hh\\:mm}" : "Pengingat nonaktif");
+            }
+        });
+        featuresMenu.Items.Add(new ToolStripSeparator());
+        featuresMenu.Items.Add("Mode Fokus (Esc = keluar)", null, (_, _) => SetFocusMode(true));
+        _btnFeatures.Click += (_, _) => featuresMenu.Show(_btnFeatures, new Point(0, _btnFeatures.Height));
+
+        _trackSpeed.Value = Math.Clamp((int)Math.Round(_settings.Speed * 10), 5, 20);
+        _trackSpeed.ValueChanged += (_, _) =>
+        {
+            float sp = _trackSpeed.Value / 10f;
+            _audio.Speed = sp;
+            _settings.Speed = sp;
+            _settings.Save();
+        };
+
         _trackVolume.ValueChanged += (_, _) =>
         {
             _audio.VolumePercent = _trackVolume.Value;
@@ -727,6 +864,8 @@ internal sealed class MainForm : Form
             _playToken++;
             _playCts?.Cancel();
             _audio.Close();
+            _mini?.Close();
+            _trayIcon?.Dispose();
             _settings.Save();
         };
     }
@@ -874,6 +1013,7 @@ internal sealed class MainForm : Form
         else if (saj == 1) status += " • ⚠ Ayat sajdah (disunnahkan)";
 
         ShowStatus(status);
+        UpdateMini();
     }
 
     private async Task LoadMushafPageAsync(int page, int? selectSurah, int? selectAyah)
@@ -1063,7 +1203,8 @@ internal sealed class MainForm : Form
     {
         var reciter = CurrentReciter;
         var pb = CurrentPb;
-        if (reciter == null && pb == null)
+        bool hasOverride = _playingPlaylist && _playlistFolder != null;
+        if (reciter == null && pb == null && !hasOverride)
         {
             ShowStatus("Pilih qari terlebih dahulu", error: true);
             return;
@@ -1079,7 +1220,7 @@ internal sealed class MainForm : Form
         _audio.Stop();
         _audio.Close();
 
-        string folder = pb?.Folder ?? reciter!.Folder;
+        string folder = pb?.Folder ?? (hasOverride ? _playlistFolder : reciter?.Folder) ?? reciter!.Folder;
         if (withIntro && pb == null)
         {
             if (!_introPlayed)
@@ -1125,7 +1266,7 @@ internal sealed class MainForm : Form
             if (token != _playToken) return;
 
             if (!_audio.Open(local)) throw new Exception("MCI gagal membuka file audio");
-            if (!_audio.Play(Handle)) throw new Exception("MCI gagal memutar audio");
+            if (!_audio.Play()) throw new Exception("Gagal memutar audio");
             UpdatePlayButton();
             ShowStatus($"Memutar: {rel}");
         }
@@ -1184,6 +1325,12 @@ internal sealed class MainForm : Form
         if (!_chkAutoNext.Checked)
         {
             ShowStatus("Selesai");
+            return;
+        }
+
+        if (_playingPlaylist && _curAyah >= QuranData.SurahAyahCount(_curSurah))
+        {
+            AdvancePlaylist();
             return;
         }
 
@@ -1261,7 +1408,151 @@ internal sealed class MainForm : Form
         ShowStatus(message);
     }
 
-    private void UpdatePlayButton() => _btnPlayPause.Text = _audio.IsOpen && _audio.IsPlaying ? "⏸ Pause" : "▶ Play";
+    private void UpdatePlayButton()
+    {
+        _btnPlayPause.Text = _audio.IsOpen && _audio.IsPlaying ? "⏸ Pause" : "▶ Play";
+        UpdateMini();
+    }
+
+    private void InitTrayAndReminder()
+    {
+        try
+        {
+            _trayIcon = new NotifyIcon
+            {
+                Icon = Icon,
+                Text = "Quran Desktop",
+                Visible = false,
+            };
+            _trayIcon.DoubleClick += (_, _) =>
+            {
+                Show();
+                WindowState = FormWindowState.Normal;
+            };
+        }
+        catch
+        {
+        }
+
+        _reminderTimer = new System.Windows.Forms.Timer { Interval = 30000 };
+        _reminderTimer.Tick += (_, _) => CheckReminder();
+        _reminderTimer.Start();
+    }
+
+    private void CheckReminder()
+    {
+        if (!_settings.ReminderEnabled)
+        {
+            if (_trayIcon != null) _trayIcon.Visible = false;
+            return;
+        }
+        if (_reminderFiredToday) return;
+
+        var now = DateTime.Now;
+        if (TimeSpan.TryParse(_settings.ReminderTime, out var t)
+            && now.TimeOfDay >= t
+            && now.TimeOfDay < t.Add(TimeSpan.FromMinutes(5)))
+        {
+            _reminderFiredToday = true;
+            if (_trayIcon != null)
+            {
+                _trayIcon.Visible = true;
+                _trayIcon.ShowBalloonTip(8000, "Waktunya baca Al-Qur'an",
+                    "Sedikit demi sedikit, lama-lama jadi bukit. Buka Quran Desktop sekarang.",
+                    ToolTipIcon.Info);
+            }
+            ShowStatus("Pengingat: waktunya baca Al-Qur'an!");
+        }
+    }
+
+    private void ApplyDarkMode()
+    {
+        bool d = _settings.DarkMode;
+        BackColor = d ? Color.FromArgb(30, 30, 34) : SystemColors.Control;
+        _topContainer.BackColor = d ? Color.FromArgb(30, 30, 34) : SystemColors.Control;
+        _center.BackColor = d ? Color.FromArgb(38, 38, 42) : Color.FromArgb(244, 244, 240);
+        _textMode.ApplyDark(d);
+        _tafsirPanel.BackColor = d ? Color.FromArgb(36, 36, 40) : Color.White;
+        _tafsirText.BackColor = d ? Color.FromArgb(36, 36, 40) : Color.White;
+        _tafsirText.ForeColor = d ? Color.Gainsboro : Color.Black;
+        _mushafRight.BackColor = d ? Color.FromArgb(42, 42, 46) : Color.FromArgb(250, 250, 247);
+        _mushafInfo.BackColor = d ? Color.FromArgb(42, 42, 46) : Color.White;
+        _mushafInfo.ForeColor = d ? Color.Gainsboro : Color.Black;
+    }
+
+    private void ToggleMiniPlayer()
+    {
+        if (_mini == null)
+        {
+            _mini = new MiniPlayerForm();
+            _mini.PlayPause += () => _btnPlayPause.PerformClick();
+            _mini.Next += () => _btnNextAya.PerformClick();
+            _mini.Prev += () => _btnPrevAya.PerformClick();
+            _mini.Restore += () =>
+            {
+                Show();
+                WindowState = FormWindowState.Normal;
+                _mini?.Close();
+            };
+            _mini.FormClosed += (_, _) => _mini = null;
+            _mini.Show(this);
+            UpdateMini();
+        }
+        else
+        {
+            _mini.Close();
+            _mini = null;
+        }
+    }
+
+    private void UpdateMini()
+    {
+        var info = SurahList.Get(_curSurah);
+        _mini?.SetInfo($"QS {_curSurah}:{_curAyah} — {info.EnglishName}", _audio.IsPlaying);
+    }
+
+    private void SetFocusMode(bool on)
+    {
+        _focusMode = on;
+        _topContainer.Visible = !on;
+        _tafsirPanel.Visible = !on && _chkTafsirPanel.Checked;
+        _lblStatus.Visible = !on;
+        Text = on
+            ? "Quran Desktop — Mode Fokus (tekan Esc untuk keluar)"
+            : "Quran Desktop — KSU Electronic Moshaf (WinForms)";
+        if (on) ShowStatus("Mode fokus aktif");
+    }
+
+    private void StartPlaylist(List<PlaylistEntry> entries)
+    {
+        _playlist.Clear();
+        _playlist.AddRange(entries);
+        _playlistIndex = 0;
+        _playingPlaylist = true;
+        PlayPlaylistEntry();
+    }
+
+    private void PlayPlaylistEntry()
+    {
+        if (_playlistIndex < 0 || _playlistIndex >= _playlist.Count)
+        {
+            _playingPlaylist = false;
+            _playlistFolder = null;
+            ShowStatus("Playlist selesai");
+            return;
+        }
+        var e = _playlist[_playlistIndex];
+        _playlistFolder = Reciters.Find(e.QareeKey)?.Folder;
+        ShowStatus($"Playlist {_playlistIndex + 1}/{_playlist.Count}: QS {e.Surah} — {e.QareeName}");
+        _ = GotoAyahAsync(e.Surah, 1).ContinueWith(_ =>
+            PlayAyah(_curSurah, _curAyah, withIntro: true), TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    private void AdvancePlaylist()
+    {
+        _playlistIndex++;
+        PlayPlaylistEntry();
+    }
 
     private void ShowStatus(string message, bool error = false)
     {
@@ -1337,6 +1628,9 @@ internal sealed class MainForm : Form
                 case Keys.Control | Keys.F:
                     _txtSearch.Focus();
                     return true;
+                case Keys.Escape when _focusMode:
+                    SetFocusMode(false);
+                    return true;
             }
         }
         return base.ProcessCmdKey(ref msg, keyData);
@@ -1344,20 +1638,6 @@ internal sealed class MainForm : Form
 
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == MM_MCINOTIFY && m.WParam.ToInt64() == MciAudio.NotifySuccess)
-        {
-            try
-            {
-                BeginInvoke(new Action(() =>
-                {
-                    UpdatePlayButton();
-                    _ = PlayNextInQueueAsync(_playToken);
-                }));
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-        }
         base.WndProc(ref m);
     }
 }

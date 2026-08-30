@@ -20,6 +20,10 @@ internal sealed class AppSettings
     public bool ShowInlineTafsir { get; set; } = false;
     public bool ShowMushafOverlay { get; set; } = false;
     public bool TeacherMode { get; set; } = false;
+    public bool DarkMode { get; set; } = false;
+    public float Speed { get; set; } = 1f;
+    public bool ReminderEnabled { get; set; } = false;
+    public string ReminderTime { get; set; } = "20:00";
     public int Volume { get; set; } = 80;
     public float Zoom { get; set; } = 1f;
 

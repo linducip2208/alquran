@@ -92,6 +92,16 @@ internal sealed class TextModeControl : Panel
         }
     }
 
+    public void ApplyDark(bool dark)
+    {
+        BackColor = dark ? Color.FromArgb(38, 38, 42) : Color.FromArgb(244, 244, 240);
+        _flp.BackColor = dark ? Color.FromArgb(38, 38, 42) : Color.FromArgb(244, 244, 240);
+        foreach (var v in _views)
+        {
+            v.SetDark(dark);
+        }
+    }
+
     private int AyahWidth() => Math.Max(200, _flp.ClientSize.Width - _flp.Padding.Horizontal - 4);
 
     private void UpdateWidths()

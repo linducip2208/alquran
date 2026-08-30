@@ -11,6 +11,7 @@ internal sealed class AyahView : Panel
     private readonly Label _tafsir = new();
     private bool _hover;
     private bool _selected;
+    private bool _dark;
 
     public event EventHandler? AyahClicked;
 
@@ -81,7 +82,15 @@ internal sealed class AyahView : Panel
     public void SetTransVisible(bool visible)
     {
         _trans.Visible = visible && !string.IsNullOrWhiteSpace(_trans.Text);
+        _trans.ForeColor = _dark ? Color.Gainsboro : Color.FromArgb(72, 72, 72);
         LayoutChildren();
+    }
+
+    public void SetDark(bool dark)
+    {
+        _dark = dark;
+        UpdateBack();
+        _trans.ForeColor = _dark ? Color.Gainsboro : Color.FromArgb(72, 72, 72);
     }
 
     public void SetTafsir(string? text, Font? font, bool rtl)
@@ -101,7 +110,13 @@ internal sealed class AyahView : Panel
         LayoutChildren();
     }
 
-    private void UpdateBack() => BackColor = _selected ? SelectedColor : _hover ? HoverColor : NormalColor;
+    private void UpdateBack()
+    {
+        Color normal = _dark ? Color.FromArgb(35, 35, 39) : NormalColor;
+        Color hover = _dark ? Color.FromArgb(45, 45, 50) : HoverColor;
+        Color selected = _dark ? Color.FromArgb(74, 67, 38) : SelectedColor;
+        BackColor = _selected ? selected : _hover ? hover : normal;
+    }
 
     private void LayoutChildren()
     {

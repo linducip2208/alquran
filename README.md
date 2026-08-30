@@ -36,7 +36,17 @@ Alternatif: [GitHub Releases](https://github.com/linducip2208/alquran/releases) 
 | 9 Kitab Tafsir | **Tafsir Jalalain (Indonesia)**, Al-Muyassar, Ibn Kathir, As-Sa'dy, Al-Baghawy, Al-Qortoby, At-Tabary, I'rab, Tafhim (Rusia) |
 | Tafsir Inline | Tafsir tampil di bawah ayat terpilih pada mode Teks |
 | Talaqaa (Voice Translation) | Audio terjemahan: English, French, Urdu, Bosnian |
-| Pemutar Audio | Per-ayat, auto-next antar ayat & surah, repeat 1×–10×/∞, **ulang rentang ayat**, **mode guru** (ayat diulang berkala untuk diikuti), basmalah & audhubillah otomatis, volume |
+| Pemutar Audio | Per-ayat, auto-next antar ayat & surah, repeat 1×–10×/∞, **ulang rentang ayat**, **mode guru** (ayat diulang berkala untuk diikuti), basmalah & audhubillah otomatis, volume, **kecepatan 0,5×–2×** |
+| Target Khatam | Progres 30 juz + streak harian, halaman otomatis tercatat saat dibuka |
+| Peta Hafalan | Heatmap 604 halaman: hafal / perlu ulang / belum |
+| Bookmark Ayat | Tandai & lompat cepat ke ayat favorit |
+| Kuis Hafalan | "Lanjutannya ayat mana?" — kuis berantai per surah dengan skor |
+| Playlist Surah | Antrian beberapa surah, tiap surah bisa qari berbeda |
+| Mini Player | Jendela kecil selalu di atas (always on top) |
+| Kartu Ayat | Export ayat + arti ke gambar PNG & salin teks ke clipboard |
+| Pengingat Harian | Notifikasi tray di jam yang diatur |
+| Mode Fokus | Toolbar & panel hilang, Esc untuk keluar |
+| Dark Mode | Tema gelap untuk seluruh aplikasi |
 | Tampilkan/Sembunyikan | Toggle arti, tafsir inline, panel tafsir, overlay mushaf — semua bisa dimatikan |
 | Navigasi Lengkap | Surah, Ayat, Halaman, Juz — seperti situs aslinya |
 | Pencarian | Cari kata/frasa di seluruh Al-Qur'an → langsung lompat ke ayat + **hasil ditandai cincin biru di mushaf** |
