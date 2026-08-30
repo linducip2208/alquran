@@ -9,6 +9,14 @@ Aplikasi Al-Qur'an desktop (Windows Forms / C# .NET 7) yang dibuat ulang berdasa
 
 ---
 
+## Download
+
+**Portable (tidak perlu install):** [Google Drive — QuranDesktop portable](https://drive.google.com/drive/folders/1A0AvGWNaHMU2bZtrvoES25RUh-pr6VMx?usp=sharing)
+
+Alternatif: [GitHub Releases](https://github.com/linducip2208/alquran/releases) — unduh `QuranDesktop-v1.0.0-win-x64.exe`, jalankan langsung di Windows 10/11 (tanpa install .NET).
+
+---
+
 ## Tampilan
 
 ![Ayat — quran.ksu.edu.sa versi Windows](docs/screenshots/ayat-ksu-edu.png)
