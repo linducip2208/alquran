@@ -9,22 +9,6 @@ Aplikasi Al-Qur'an desktop (Windows Forms / C# .NET 7) yang dibuat ulang berdasa
 
 ---
 
-## Tampilan Aplikasi
-
-**Mode Mushaf** — buka-bukaan dua halaman (ganjil kanan, genap kiri) dengan highlight ayat, panel arti & tafsir:
-
-![Mode Mushaf](docs/screenshots/mode-mushaf.png)
-
-**Mode Teks & Terjemahan** — ayat Uthmani + terjemahan bahasa Indonesia + panel tafsir:
-
-![Mode Teks](docs/screenshots/mode-teks.png)
-
-**Mode Tes Hafalan (Hifz)** — soal acak dari rentang pilihan:
-
-![Mode Hifz](docs/screenshots/mode-hifz.png)
-
----
-
 ## Fitur
 
 | Fitur | Keterangan |
