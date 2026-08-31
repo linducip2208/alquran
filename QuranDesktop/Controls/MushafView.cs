@@ -172,7 +172,7 @@ internal sealed class MushafView : Panel
         if (img == null || img.Width == 0) return;
 
         int availW = Math.Max(100, ClientSize.Width - Padding.Horizontal - 4);
-        int availH = Math.Max(100, ClientSize.Height - TopMargin - 20);
+        int availH = Math.Max(100, ClientSize.Height - TopMargin * 2 - 20);
 
         float fitW, fitH;
         if (SinglePage)
@@ -198,6 +198,7 @@ internal sealed class MushafView : Panel
     private void LayoutPages()
     {
         int availW = Math.Max(200, ClientSize.Width - Padding.Horizontal - 4);
+        int bottomPad = TopMargin;
 
         if (SinglePage)
         {
@@ -208,7 +209,9 @@ internal sealed class MushafView : Panel
                 int w = Math.Max(80, (int)(availW * _zoom));
                 int h = Math.Max(100, w * _right.Img.Height / _right.Img.Width);
                 _right.Pic.SetBounds(Padding.Left, TopMargin, w, h);
+                _picBounds = new Rectangle(Padding.Left, TopMargin, w, h);
             }
+            AutoScrollMargin = new Size(0, bottomPad);
             return;
         }
 
@@ -221,6 +224,7 @@ internal sealed class MushafView : Panel
             int w = Math.Max(80, (int)(slotW * _zoom));
             int h = Math.Max(100, w * _left.Img.Height / _left.Img.Width);
             _left.Pic.SetBounds(0, TopMargin, w, h);
+            _picBounds = new Rectangle(0, TopMargin, w, h);
         }
 
         if (_right.Img != null)
@@ -229,10 +233,14 @@ internal sealed class MushafView : Panel
             int h = Math.Max(100, w * _right.Img.Height / _right.Img.Width);
             int x = _left.Img != null && _left.Pic.Visible ? _left.Pic.Right + Gap : Padding.Left;
             _right.Pic.SetBounds(x, TopMargin, w, h);
+            _picBounds = new Rectangle(x, TopMargin, w, h);
         }
 
+        AutoScrollMargin = new Size(0, bottomPad);
         ClampScroll();
     }
+
+    private Rectangle _picBounds = Rectangle.Empty;
 
     private void ClampScroll()
     {
