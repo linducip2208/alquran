@@ -55,7 +55,7 @@ internal sealed class MushafView : Panel
     public bool SinglePage { get; set; }
 
     public (int Right, int Left) SpreadPages => SinglePage
-        ? (CurrentPage, SinglePage ? CurrentPage : _left.Page)
+        ? (CurrentPage, -1)
         : (_right.Page, _left.Page);
 
     public MushafView()
@@ -200,36 +200,35 @@ internal sealed class MushafView : Panel
 
         if (SinglePage)
         {
+            _left.Pic.Visible = false;
+            _right.Pic.Visible = true;
             if (_right.Img != null)
             {
                 int w = Math.Max(80, (int)(availW * _zoom));
                 int h = Math.Max(100, w * _right.Img.Height / _right.Img.Width);
-                int x = Math.Max(0, (availW - w) / 2);
-                _right.Pic.SetBounds(x, 0, w, h);
-            }
-            if (_left.Img != null)
-            {
-                _left.Pic.SetBounds(-9999, 0, 10, 10);
+                _right.Pic.SetBounds(Padding.Left, 0, w, h);
             }
             AutoScrollMargin = new Size(0, 12);
             return;
         }
 
+        _left.Pic.Visible = true;
+        _right.Pic.Visible = true;
         int slotW = (availW - Gap) / 2;
-
-        if (_right.Img != null)
-        {
-            int w = Math.Max(80, (int)(slotW * _zoom));
-            int h = Math.Max(100, w * _right.Img.Height / _right.Img.Width);
-            _right.Pic.SetBounds(availW - w, 0, w, h);
-        }
 
         if (_left.Img != null)
         {
             int w = Math.Max(80, (int)(slotW * _zoom));
             int h = Math.Max(100, w * _left.Img.Height / _left.Img.Width);
-            int x = _right.Img != null ? Math.Max(0, _right.Pic.Left - Gap - w) : availW - w;
-            _left.Pic.SetBounds(x, 0, w, h);
+            _left.Pic.SetBounds(0, 0, w, h);
+        }
+
+        if (_right.Img != null)
+        {
+            int w = Math.Max(80, (int)(slotW * _zoom));
+            int h = Math.Max(100, w * _right.Img.Height / _right.Img.Width);
+            int x = _left.Img != null && _left.Pic.Visible ? _left.Pic.Right + Gap : Padding.Left;
+            _right.Pic.SetBounds(x, 0, w, h);
         }
 
         AutoScrollMargin = new Size(0, 12);
