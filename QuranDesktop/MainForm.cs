@@ -33,7 +33,7 @@ internal sealed class MainForm : Form
     private readonly Font _tafsirFont = ResolveFont(
         new[] { "Traditional Arabic", "Scheherazade New", "Amiri", "Segoe UI" },
         14f);
-    private readonly Font _transFont = new("Segoe UI", 10.5f);
+    private Font _transFont = new("Segoe UI", 10.5f);
 
     private ComboBox _cmbMode = new();
     private ComboBox _cmbMosshaf = new();
@@ -96,6 +96,13 @@ internal sealed class MainForm : Form
     private bool _playingPlaylist;
     private string? _playlistFolder;
     private bool _focusMode;
+    private readonly List<(int Surah, int Ayah)> _history = new();
+    private int _histPos = -1;
+    private Dictionary<string, string>? _prayerTimes;
+    private DateTime _prayerFetchedDate;
+    private readonly HashSet<string> _notifiedPrayers = new();
+
+    private const string AppVersion = "1.4.0";
 
     public MainForm()
     {
@@ -132,6 +139,51 @@ internal sealed class MainForm : Form
 
         _mushafView.ShowOverlay = _settings.ShowMushafOverlay;
         _mushafView.OverlayProvider = OverlayTextForAyah;
+        _audio.Speed = Math.Clamp(_settings.Speed, 0.5f, 2f);
+        ProgramServices.ActiveTranslationKey = _settings.Translation;
+        _mushafView.ZoomChanged += () =>
+        {
+            _settings.Zoom = _mushafView.Zoom;
+            _settings.Save();
+        };
+
+        InitTrayAndReminder();
+        ApplyDarkMode();
+
+        if (!_settings.FirstRunDone)
+        {
+            Shown += (_, _) =>
+            {
+                _settings.FirstRunDone = true;
+                _settings.Save();
+                using var w = new WelcomeDialog();
+                w.ShowDialog(this);
+            };
+        }
+
+        if (_settings.ShowDailyAyah)
+        {
+            Shown += (_, _) =>
+            {
+                var t = new System.Windows.Forms.Timer { Interval = 1500 };
+                t.Tick += (_, _) =>
+                {
+                    t.Stop();
+                    t.Dispose();
+                    if (IsDisposed || !IsHandleCreated) return;
+                    try
+                    {
+                        var dlg = new DailyAyahDialog();
+                        dlg.GotoRequested += (s, a) => _ = GotoAyahAsync(s, a);
+                        dlg.Show(this);
+                    }
+                    catch
+                    {
+                    }
+                };
+                t.Start();
+            };
+        }
     }
 
     private string OverlayTextForAyah(int surah, int ayah)
@@ -824,6 +876,189 @@ internal sealed class MainForm : Form
             }
         });
         featuresMenu.Items.Add(new ToolStripSeparator());
+        featuresMenu.Items.Add("Kata per Kata (WBW)", null, (_, _) =>
+        {
+            using var d = new WbwDialog(_curSurah, _curAyah);
+            d.ShowDialog(this);
+        });
+        featuresMenu.Items.Add("Bacakan Arti (TTS)", null, async (_, _) =>
+        {
+            if (!TtsService.Available)
+            {
+                ShowStatus("TTS tidak tersedia di sistem ini", error: true);
+                return;
+            }
+            try
+            {
+                var arabic = await TarjamaAsync("ar_ayat", _curSurah);
+                arabic.TryGetValue(_curAyah, out var arab);
+                var t = CurrentTranslation;
+                string arti = "";
+                if (t != null)
+                {
+                    var m = await TarjamaAsync(t.Key, _curSurah);
+                    arti = m.TryGetValue(_curAyah, out var v) ? KsuApi.StripHtml(v) : "";
+                }
+                var info = SurahList.Get(_curSurah);
+                TtsService.Speak($"{info.EnglishName}, ayat {_curAyah}. {arti}");
+                ShowStatus("Membacakan arti…");
+            }
+            catch (Exception ex)
+            {
+                ShowStatus("TTS gagal: " + ex.Message, error: true);
+            }
+        });
+        featuresMenu.Items.Add("Latihan Dikte (Imla')", null, (_, _) =>
+        {
+            using var d = new DictationDialog();
+            d.PlayRequested += (s, a) =>
+            {
+                _playingPlaylist = false;
+                _playlistFolder = null;
+                PlayAyah(s, a, withIntro: false);
+            };
+            d.ShowDialog(this);
+        });
+        featuresMenu.Items.Add("Rekam Tilawah", null, (_, _) =>
+        {
+            using var d = new RecordingDialog();
+            d.ShowDialog(this);
+        });
+        featuresMenu.Items.Add("Jadwal Sholat", null, (_, _) =>
+        {
+            using var d = new PrayerTimesDialog(_settings.PrayerCity, _settings.PrayerCountry, _settings.PrayerMethod, _settings.PrayerNotify);
+            if (d.ShowDialog(this) == DialogResult.OK)
+            {
+                _settings.PrayerCity = d.City;
+                _settings.PrayerCountry = d.Country;
+                _settings.PrayerMethod = d.Method;
+                _settings.PrayerNotify = d.NotifyBefore;
+                _settings.Save();
+                _prayerFetchedDate = default;
+                _notifiedPrayers.Clear();
+                ShowStatus($"Jadwal sholat: {d.City}, {d.Country}");
+            }
+        });
+        featuresMenu.Items.Add("Statistik Baca (30 hari)", null, (_, _) =>
+        {
+            using var d = new StatsDialog();
+            d.ShowDialog(this);
+        });
+        featuresMenu.Items.Add(new ToolStripSeparator());
+        featuresMenu.Items.Add("Backup Data…", null, async (_, _) =>
+        {
+            using var dlg = new SaveFileDialog
+            {
+                Filter = "Backup Quran Desktop|*.quranbak",
+                FileName = $"quran-backup-{DateTime.Now:yyyyMMdd}.quranbak",
+            };
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                try
+                {
+                    await BackupService.ExportAsync(dlg.FileName);
+                    ShowStatus("Backup tersimpan: " + Path.GetFileName(dlg.FileName));
+                }
+                catch (Exception ex)
+                {
+                    ShowStatus("Backup gagal: " + ex.Message, error: true);
+                }
+            }
+        });
+        featuresMenu.Items.Add("Restore Data…", null, async (_, _) =>
+        {
+            using var dlg = new OpenFileDialog { Filter = "Backup Quran Desktop|*.quranbak" };
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                try
+                {
+                    await BackupService.ImportAsync(dlg.FileName);
+                    MessageBox.Show(this, "Data dipulihkan. Aplikasi akan dimulai ulang.", "Restore",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    Application.Restart();
+                }
+                catch (Exception ex)
+                {
+                    ShowStatus("Restore gagal: " + ex.Message, error: true);
+                }
+            }
+        });
+        featuresMenu.Items.Add("Cek Pembaruan", null, async (_, _) =>
+        {
+            ShowStatus("Memeriksa pembaruan…");
+            var upd = await BackupService.CheckUpdateAsync(CancellationToken.None);
+            if (upd == null)
+            {
+                ShowStatus("Gagal memeriksa pembaruan", error: true);
+                return;
+            }
+            string latest = upd.Value.Tag.TrimStart('v');
+            if (string.CompareOrdinal(latest, AppVersion) > 0)
+            {
+                var ask = MessageBox.Show(this,
+                    $"Versi baru tersedia: {upd.Value.Tag} (kamu pakai v{AppVersion}).\nBuka halaman unduhan?",
+                    "Pembaruan Tersedia", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+                if (ask == DialogResult.Yes)
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = upd.Value.Url,
+                            UseShellExecute = true,
+                        });
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+            else
+            {
+                ShowStatus($"Aplikasi sudah versi terbaru (v{AppVersion})");
+            }
+        });
+        featuresMenu.Items.Add("Ukuran Font Terjemahan…", null, (_, _) =>
+        {
+            using var dlg = new Form
+            {
+                Text = "Ukuran Font Terjemahan",
+                ClientSize = new Size(300, 120),
+                FormBorderStyle = FormBorderStyle.FixedDialog,
+                StartPosition = FormStartPosition.CenterParent,
+                MaximizeBox = false,
+            };
+            var num = new NumericUpDown
+            {
+                Left = 20,
+                Top = 20,
+                Width = 100,
+                Minimum = 9m,
+                Maximum = 16m,
+                Increment = 0.5m,
+                DecimalPlaces = 1,
+                Value = (decimal)_settings.TranslationFontSize,
+            };
+            var ok = new Button { Text = "OK", Left = 140, Top = 18, Width = 80 };
+            dlg.Controls.Add(num);
+            dlg.Controls.Add(ok);
+            dlg.AcceptButton = ok;
+            ok.Click += (_, _) => { dlg.DialogResult = DialogResult.OK; dlg.Close(); };
+            if (dlg.ShowDialog(this) == DialogResult.OK)
+            {
+                _settings.TranslationFontSize = (float)num.Value;
+                _settings.Save();
+                _transFont.Dispose();
+                _transFont = new Font("Segoe UI", _settings.TranslationFontSize);
+                _renderedSurah = -1;
+                if (CurrentMode == "teks")
+                {
+                    _ = RenderSurahAsync(_curSurah);
+                    _textMode.SetSelected(_curAyah);
+                }
+            }
+        });
+        featuresMenu.Items.Add(new ToolStripSeparator());
         featuresMenu.Items.Add("Mode Fokus (Esc = keluar)", null, (_, _) => SetFocusMode(true));
         _btnFeatures.Click += (_, _) => featuresMenu.Show(_btnFeatures, new Point(0, _btnFeatures.Height));
 
@@ -883,6 +1118,7 @@ internal sealed class MainForm : Form
             _audio.Close();
             _mini?.Close();
             _trayIcon?.Dispose();
+            TtsService.Dispose();
             _settings.Save();
         };
     }
@@ -967,7 +1203,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private async Task GotoAyahAsync(int surah, int ayah)
+    private async Task GotoAyahAsync(int surah, int ayah, bool pushHistory = true)
     {
         ayah = Math.Clamp(ayah, 1, QuranData.SurahAyahCount(surah));
         _curSurah = surah;
@@ -975,6 +1211,7 @@ internal sealed class MainForm : Form
         _settings.Surah = surah;
         _settings.Ayah = ayah;
         _settings.Save();
+        if (pushHistory) PushHistory(surah, ayah);
 
         _uiBusy = true;
         _cmbSurah.SelectedIndex = surah - 1;
@@ -1414,6 +1651,37 @@ internal sealed class MainForm : Form
         await PlayNextInQueueAsync(token);
     }
 
+    private void PushHistory(int surah, int ayah)
+    {
+        if (_histPos >= 0 && _histPos < _history.Count
+            && _history[_histPos].Surah == surah && _history[_histPos].Ayah == ayah) return;
+
+        while (_history.Count > _histPos + 1) _history.RemoveAt(_history.Count - 1);
+        _history.Add((surah, ayah));
+        if (_history.Count > 200) _history.RemoveAt(0);
+        _histPos = _history.Count - 1;
+    }
+
+    private void NavBack()
+    {
+        if (_histPos > 0)
+        {
+            _histPos--;
+            var (s, a) = _history[_histPos];
+            _ = GotoAyahAsync(s, a, pushHistory: false);
+        }
+    }
+
+    private void NavForward()
+    {
+        if (_histPos < _history.Count - 1)
+        {
+            _histPos++;
+            var (s, a) = _history[_histPos];
+            _ = GotoAyahAsync(s, a, pushHistory: false);
+        }
+    }
+
     private void StopPlayback(string message)
     {
         _playToken++;
@@ -1452,7 +1720,7 @@ internal sealed class MainForm : Form
         }
 
         _reminderTimer = new System.Windows.Forms.Timer { Interval = 30000 };
-        _reminderTimer.Tick += (_, _) => CheckReminder();
+        _reminderTimer.Tick += (_, _) => { CheckReminder(); CheckPrayerTimes(); };
         _reminderTimer.Start();
     }
 
@@ -1479,6 +1747,60 @@ internal sealed class MainForm : Form
                     ToolTipIcon.Info);
             }
             ShowStatus("Pengingat: waktunya baca Al-Qur'an!");
+        }
+    }
+
+    private async void CheckPrayerTimes()
+    {
+        try
+        {
+            if (_prayerFetchedDate != DateTime.Today)
+            {
+                _prayerFetchedDate = DateTime.Today;
+                _notifiedPrayers.Clear();
+                string url = $"https://api.aladhan.com/v1/timingsByCity?city={Uri.EscapeDataString(_settings.PrayerCity)}"
+                    + $"&country={Uri.EscapeDataString(_settings.PrayerCountry)}&method={_settings.PrayerMethod}";
+                using var resp = await ProgramServices.Http.GetAsync(url, CancellationToken.None);
+                resp.EnsureSuccessStatusCode();
+                var json = await resp.Content.ReadAsStringAsync();
+                _prayerTimes = System.Text.Json.JsonDocument.Parse(json).RootElement
+                    .GetProperty("data").GetProperty("timings").EnumerateObject()
+                    .ToDictionary(p => p.Name, p => (p.Value.GetString() ?? "")[..5]);
+            }
+
+            if (_prayerTimes == null || !_settings.PrayerNotify) return;
+            var now = DateTime.Now.TimeOfDay;
+            foreach (var name in new[] { "Fajr", "Dhuhr", "Asr", "Maghrib", "Isha" })
+            {
+                if (_notifiedPrayers.Contains(name)) continue;
+                if (_prayerTimes.TryGetValue(name, out var t) && TimeSpan.TryParse(t, out var time))
+                {
+                    var diff = time - now;
+                    if (diff > TimeSpan.Zero && diff <= TimeSpan.FromMinutes(10))
+                    {
+                        _notifiedPrayers.Add(name);
+                        string label = name switch
+                        {
+                            "Fajr" => "Subuh",
+                            "Dhuhr" => "Zuhur",
+                            "Asr" => "Asar",
+                            "Maghrib" => "Magrib",
+                            "Isha" => "Isya",
+                            _ => name,
+                        };
+                        if (_trayIcon != null)
+                        {
+                            _trayIcon.Visible = true;
+                            _trayIcon.ShowBalloonTip(6000, $"Sholat {label} {t}",
+                                $"Waktu sholat {label} pukul {t} — bersiaplah.", ToolTipIcon.Info);
+                        }
+                        ShowStatus($"Sholat {label} pukul {t} — 10 menit lagi");
+                    }
+                }
+            }
+        }
+        catch
+        {
         }
     }
 
@@ -1647,6 +1969,12 @@ internal sealed class MainForm : Form
                     return true;
                 case Keys.Escape when _focusMode:
                     SetFocusMode(false);
+                    return true;
+                case Keys.Alt | Keys.Left:
+                    NavBack();
+                    return true;
+                case Keys.Alt | Keys.Right:
+                    NavForward();
                     return true;
             }
         }

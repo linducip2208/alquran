@@ -31,6 +31,7 @@ internal sealed class MushafView : Panel
 
     public event Action<int, int>? AyahClicked;
     public event Action? ImageChanged;
+    public event Action? ZoomChanged;
 
     public Func<int, int, string>? TooltipProvider { get; set; }
     public Func<int, int, string>? OverlayProvider { get; set; }
@@ -170,6 +171,17 @@ internal sealed class MushafView : Panel
         }
 
         AutoScrollMargin = new Size(0, 12);
+    }
+
+    protected override void OnMouseWheel(MouseEventArgs e)
+    {
+        if (ModifierKeys.HasFlag(Keys.Control))
+        {
+            SetZoom(_zoom * (e.Delta > 0 ? 1.15f : 1f / 1.15f));
+            ZoomChanged?.Invoke();
+            return;
+        }
+        base.OnMouseWheel(e);
     }
 
     private void ScrollToAyah(int surah, int ayah)

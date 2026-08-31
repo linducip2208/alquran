@@ -50,9 +50,18 @@ Alternatif:
 | Mode Fokus | Toolbar & panel hilang, Esc untuk keluar |
 | Dark Mode | Tema gelap untuk seluruh aplikasi |
 | Konten Inspirasi | **Ayat Hari Ini** (tampil saat buka app), 12 kategori motivasi (cemas, rezeki, jodoh, ikhtiar, dll.), Doa Rabbana, quick access Ayat Kursi & 3 Qul |
+| Kata per Kata | Arti & transliterasi tiap kata Arab (sumber quran.com) |
+| TTS | Bacakan arti ayat dengan suara Windows |
+| Latihan Dikte | Audio acak diputar — tebak surah & ayatnya |
+| Rekam Tilawah | Rekam suara dengan mikrofon, putar ulang & hapus |
+| Jadwal Sholat | API AlAdhan per kota + notifikasi 10 menit sebelum waktu sholat |
+| Statistik Baca | Grafik halaman per hari (30 hari terakhir) |
+| Backup & Restore | Simpan seluruh data (settings + progres) ke satu file |
+| Update Checker | Cek versi terbaru otomatis dari GitHub Releases |
+| Lainnya | Ukuran font terjemahan bisa diatur • Sambutan first-run |
 | Indikator Sajdah | Ayat sajdah wajib / disunnahkan di status bar |
 | Unduh Massal | Download semua/rentang halaman mushaf & audio satu surah penuh — offline |
-| Shortcut Keyboard | ← → pindah ayat • Space play/pause • PgUp/PgDn halaman • Ctrl+F cari • Esc keluar fokus |
+| Shortcut Keyboard | ← → pindah ayat • Space play/pause • PgUp/PgDn halaman • Ctrl+F cari • Esc keluar fokus • Ctrl+scroll zoom mushaf • Alt+←/→ navigasi mundur/maju |
 | Cache Offline | Audio, gambar mushaf, terjemahan & tafsir tersimpan otomatis |
 | Simpan Posisi | Surah, ayat, qari, mode, zoom, tema — tersimpan otomatis |
 | Ikon | Ikon aplikasi kustom |

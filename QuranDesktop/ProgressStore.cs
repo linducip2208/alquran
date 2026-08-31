@@ -16,6 +16,7 @@ internal static class ProgressStore
         public Dictionary<string, int> ReadCounts { get; set; } = new();
         public Dictionary<int, int> HafalStatus { get; set; } = new();
         public List<Bookmark> Bookmarks { get; set; } = new();
+        public int KhatamCount { get; set; }
     }
 
     private static Data _data = Load();
@@ -63,6 +64,14 @@ internal static class ProgressStore
 
     public static int ReadPageCount => _data.ReadPages.Count;
 
+    public static int KhatamCount
+    {
+        get
+        {
+            lock (_lock) return _data.KhatamCount;
+        }
+    }
+
     public static void MarkPageRead(int page)
     {
         bool added;
@@ -73,9 +82,29 @@ internal static class ProgressStore
             {
                 var key = DateTime.Now.ToString("yyyy-MM-dd");
                 _data.ReadCounts[key] = _data.ReadCounts.TryGetValue(key, out int c) ? c + 1 : 1;
+                if (_data.ReadPages.Count >= QuranData.PageCount("Page"))
+                {
+                    _data.KhatamCount++;
+                    _data.ReadPages.Clear();
+                }
             }
         }
         if (added) Save();
+    }
+
+    public static void ResetReadPages()
+    {
+        lock (_lock)
+        {
+            _data.ReadPages.Clear();
+            _data.ReadCounts.Clear();
+        }
+        Save();
+    }
+
+    public static Dictionary<string, int> ReadCountsSnapshot()
+    {
+        lock (_lock) return new Dictionary<string, int>(_data.ReadCounts);
     }
 
     public static int StreakDays()

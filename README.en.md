@@ -50,9 +50,18 @@ Alternatives:
 | Focus Mode | Toolbar & panels hidden, Esc to exit |
 | Dark Mode | Dark theme across the whole app |
 | Inspiring Content | **Verse of the Day** (shown on launch), 12 motivation categories (anxiety, provision, marriage, effort, etc.), Rabbana supplications, quick access to Ayat al-Kursi & the 3 Quls |
+| Word-by-Word | Per-word Arabic meaning & transliteration (from quran.com) |
+| TTS | Read the verse translation aloud with Windows voices |
+| Dictation Practice | Random audio plays — guess the surah & verse |
+| Recitation Recorder | Record your voice with the microphone, play back & delete |
+| Prayer Times | AlAdhan API per city + notification 10 minutes before prayer |
+| Reading Stats | Bar chart of pages read per day (last 30 days) |
+| Backup & Restore | Save all data (settings + progress) into a single file |
+| Update Checker | Check for the latest release automatically from GitHub Releases |
+| Extras | Adjustable translation font size • First-run welcome |
 | Sajdah Indicator | Obligatory / recommended prostration verses in the status bar |
 | Bulk Download | Download all/selected mushaf pages & a full surah of audio — offline |
-| Keyboard Shortcuts | ← → change verse • Space play/pause • PgUp/PgDn page • Ctrl+F search • Esc exit focus |
+| Keyboard Shortcuts | ← → change verse • Space play/pause • PgUp/PgDn page • Ctrl+F search • Esc exit focus • Ctrl+scroll mushaf zoom • Alt+←/→ back/forward navigation |
 | Offline Cache | Audio, mushaf images, translations & tafsir cached automatically |
 | Remember Position | Surah, verse, reciter, mode, zoom, theme — saved automatically |
 | Icon | Custom application icon |

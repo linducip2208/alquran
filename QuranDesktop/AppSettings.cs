@@ -28,6 +28,12 @@ internal sealed class AppSettings
     public bool ReminderEnabled { get; set; } = false;
     public string ReminderTime { get; set; } = "20:00";
     public bool ShowDailyAyah { get; set; } = true;
+    public float TranslationFontSize { get; set; } = 10.5f;
+    public string PrayerCity { get; set; } = "Jakarta";
+    public string PrayerCountry { get; set; } = "Indonesia";
+    public int PrayerMethod { get; set; } = 20;
+    public bool PrayerNotify { get; set; } = true;
+    public bool FirstRunDone { get; set; } = false;
     public int Volume { get; set; } = 80;
     public float Zoom { get; set; } = 1f;
 
