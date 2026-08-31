@@ -142,10 +142,18 @@ internal sealed class MushafView : Panel
 
     public void SetZoom(float zoom)
     {
-        _zoom = Math.Clamp(zoom, 0.5f, 2.5f);
+        _zoom = Math.Clamp(zoom, 0.15f, 2.5f);
         LayoutPages();
         _left.Pic.Invalidate();
         _right.Pic.Invalidate();
+    }
+
+    public void FitToHeight()
+    {
+        var pic = _left.Img != null ? _left.Pic : _right.Pic;
+        if (pic.Height < 40 || Height < 80) return;
+        float factor = (Height - 12f) / pic.Height;
+        SetZoom(_zoom * factor);
     }
 
     public float Zoom => _zoom;

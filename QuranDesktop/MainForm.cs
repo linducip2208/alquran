@@ -52,6 +52,7 @@ internal sealed class MainForm : Form
     private Button _btnPageNext = new();
     private Button _btnZoomIn = new();
     private Button _btnZoomOut = new();
+    private Button _btnFit = new();
     private Button _btnDownload = new();
     private CheckBox _chkAutoNext = new();
     private CheckBox _chkPlayOnClick = new();
@@ -243,6 +244,7 @@ internal sealed class MainForm : Form
         _btnPageNext = new Button { Text = "Hal ▶", Width = 56 };
         _btnZoomIn = new Button { Text = "Zoom +", Width = 64 };
         _btnZoomOut = new Button { Text = "Zoom −", Width = 64 };
+        _btnFit = new Button { Text = "Fit", Width = 46 };
         _btnDownload = new Button { Text = "⬇ Unduh", Width = 80 };
 
         flow1.Controls.Add(new Label { Text = "Mode:", AutoSize = true, Padding = new Padding(0, 8, 0, 0) });
@@ -260,6 +262,7 @@ internal sealed class MainForm : Form
         _chkOverlay = new CheckBox { Text = "Arti di mushaf", AutoSize = true, Padding = new Padding(6, 6, 0, 0) };
         flow1.Controls.Add(_btnZoomIn);
         flow1.Controls.Add(_btnZoomOut);
+        flow1.Controls.Add(_btnFit);
         flow1.Controls.Add(_btnDownload);
         flow1.Controls.Add(_chkOverlay);
 
@@ -623,6 +626,7 @@ internal sealed class MainForm : Form
         _btnPageNext.Click += (_, _) => StepPage(1);
         _btnZoomIn.Click += (_, _) => { _mushafView.SetZoom(_mushafView.Zoom * 1.2f); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
         _btnZoomOut.Click += (_, _) => { _mushafView.SetZoom(_mushafView.Zoom / 1.2f); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
+        _btnFit.Click += (_, _) => { _mushafView.FitToHeight(); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
         _btnDownload.Click += (_, _) =>
         {
             var mt = CurrentMushafType;
@@ -1129,6 +1133,7 @@ internal sealed class MainForm : Form
         _btnPagePrev.Visible = _cmbPage.Visible = _btnPageNext.Visible = mode == "mushaf";
         _cmbJuz.Visible = mode == "mushaf";
         _btnZoomIn.Visible = _btnZoomOut.Visible = mode == "mushaf";
+        _btnFit.Visible = mode == "mushaf";
         _btnDownload.Visible = mode == "mushaf";
 
         if (mode == "teks")
