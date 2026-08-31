@@ -1,11 +1,13 @@
 # Quran Desktop — KSU Electronic Moshaf untuk Windows
 
+**Bahasa / Languages:** [Indonesia](README.md) • [English](README.en.md) • [العربية](README.ar.md)
+
 Aplikasi Al-Qur'an desktop (Windows Forms / C# .NET 7) yang dibuat ulang berdasarkan situs resmi
 **[Quran KSU Electronic Moshaf Project](https://quran.ksu.edu.sa/index.php?ui=1&l=en)** — Universitas King Saud, Arab Saudi.
 
 > Dibuat ulang untuk **Windows 10 & 11** oleh **Lindu Cipta Pranayama**
 > Dibangun menggunakan **GLM 5.3 Flash**
-> Kontak / WhatsApp: **0812-9605-2010** (+62 812 9605 2010)
+> Kontak / WhatsApp: **+62 812-9605-2010**
 
 ---
 
@@ -19,29 +21,27 @@ Alternatif:
 
 ---
 
-## Tampilan
+## Fitur Lengkap
 
-![Ayat — quran.ksu.edu.sa versi Windows](docs/screenshots/ayat-ksu-edu.png)
-
----
-
-## Fitur
-
-| Fitur | Keterangan |
+| Kategori | Fitur |
 |---|---|
-| 3 Mode Tampilan | **Mushaf** (buka-bukaan 2 halaman, ganjil kanan–genap kiri), **Teks & Terjemahan**, **Tes Hafalan (Hifz)** |
-| 3 Jenis Mushaf | Hafs, Rewayat Warsh, Hafs Tajweed (604 halaman, gambar asli server KSU) |
-| Klik Ayat di Mushaf | Klik langsung ayat pada halaman → highlight + arti + tafsir |
-| Overlay Arti di Mushaf | Teks arti melayang di atas halaman pada posisi tiap ayat (seperti situs asli) |
-| 43 Qari | Hafs lengkap + varian Warsh, Murattal/Mujawwad/Teacher (Husary, Abdul Basit, Minshawi, Sudais, Maher, Afasy, dll.) |
-| 22 Terjemahan | Indonesia, English (Saheeh International), Melayu, Arab (4 varian), Urdu, Rusia, dll. |
-| 9 Kitab Tafsir | **Tafsir Jalalain (Indonesia)**, Al-Muyassar, Ibn Kathir, As-Sa'dy, Al-Baghawy, Al-Qortoby, At-Tabary, I'rab, Tafhim (Rusia) |
+| Mode Tampilan | **Mushaf** (buka-bukaan 2 halaman: ganjil kanan–genap kiri), **Teks & Terjemahan**, **Tes Hafalan (Hifz)** |
+| Jenis Mushaf | Hafs, Rewayat Warsh, Hafs Tajweed (604 halaman, gambar asli server KSU) |
+| Interaksi Mushaf | Klik ayat langsung di halaman → highlight bubble emas + cincin biru hasil pencarian |
+| Overlay | Teks arti melayang di atas halaman pada posisi tiap ayat |
+| Qari | **43 qari** + varian Warsh, Murattal/Mujawwad/Teacher (Husary, Abdul Basit, Minshawi, Sudais, Maher, Afasy, dll.) |
+| Terjemahan | **22 bahasa** — Indonesia, English (Saheeh International), Melayu, Arab (4 varian), Urdu, Rusia, dll. |
+| Tafsir | **9 kitab** — Tafsir Jalalain (Indonesia), Al-Muyassar, Ibn Kathir, As-Sa'dy, Al-Baghawy, Al-Qortoby, At-Tabary, I'rab, Tafhim (Rusia) |
 | Tafsir Inline | Tafsir tampil di bawah ayat terpilih pada mode Teks |
-| Talaqaa (Voice Translation) | Audio terjemahan: English, French, Urdu, Bosnian |
-| Pemutar Audio | Per-ayat, auto-next antar ayat & surah, repeat 1×–10×/∞, **ulang rentang ayat**, **mode guru** (ayat diulang berkala untuk diikuti), basmalah & audhubillah otomatis, volume, **kecepatan 0,5×–2×** |
-| Target Khatam | Progres 30 juz + streak harian, halaman otomatis tercatat saat dibuka |
-| Peta Hafalan | Heatmap 604 halaman: hafal / perlu ulang / belum |
-| Bookmark Ayat | Tandai & lompat cepat ke ayat favorit |
+| Talaqaa (Voice) | Audio terjemahan: English, French, Urdu, Bosnian |
+| Pemutar Audio | Per-ayat, auto-next antar ayat & surah, repeat 1×–10×/∞, **ulang rentang ayat X–Y**, **mode guru** (ayat diulang berkala), basmalah & audhubillah otomatis, volume, **kecepatan 0,5×–2×** |
+| Tampilkan/Sembunyikan | Toggle arti, tafsir inline, panel tafsir, overlay mushaf |
+| Navigasi | Surah, Ayat, Halaman (spread), Juz — seperti situs aslinya |
+| Pencarian | Cari kata/frasa seluruh Al-Qur'an → lompat ke ayat + **hasil ditandai cincin biru di mushaf** |
+| Mode Hifz | Soal hafalan acak dari rentang surah/ayat, sembunyi/tampil teks, putar audio |
+| Target Khatam | Progres 30 juz + streak harian — halaman otomatis tercatat saat dibuka |
+| Peta Hafalan | Heatmap 604 halaman: hafal / perlu ulang / belum (klik untuk ubah status) |
+| Bookmark | Tandai ayat favorit, panel daftar untuk lompat cepat |
 | Kuis Hafalan | "Lanjutannya ayat mana?" — kuis berantai per surah dengan skor |
 | Playlist Surah | Antrian beberapa surah, tiap surah bisa qari berbeda |
 | Mini Player | Jendela kecil selalu di atas (always on top) |
@@ -49,87 +49,42 @@ Alternatif:
 | Pengingat Harian | Notifikasi tray di jam yang diatur |
 | Mode Fokus | Toolbar & panel hilang, Esc untuk keluar |
 | Dark Mode | Tema gelap untuk seluruh aplikasi |
-| Konten Inspirasi | **Ayat Hari Ini**, 12 kategori motivasi (cemas, rezeki, jodoh, ikhtiar, dll.), Doa Rabbana, quick access Ayat Kursi & 3 Qul — bisa dijadikan kartu PNG |
-| Tampilkan/Sembunyikan | Toggle arti, tafsir inline, panel tafsir, overlay mushaf — semua bisa dimatikan |
-| Navigasi Lengkap | Surah, Ayat, Halaman, Juz — seperti situs aslinya |
-| Pencarian | Cari kata/frasa di seluruh Al-Qur'an → langsung lompat ke ayat + **hasil ditandai cincin biru di mushaf** |
-| Mode Hifz | Soal hafalan acak dari rentang surah/ayat, sembunyi/tampil teks, putar audio |
+| Konten Inspirasi | **Ayat Hari Ini** (tampil saat buka app), 12 kategori motivasi (cemas, rezeki, jodoh, ikhtiar, dll.), Doa Rabbana, quick access Ayat Kursi & 3 Qul |
 | Indikator Sajdah | Ayat sajdah wajib / disunnahkan di status bar |
-| Unduh Massal | Download semua/rentang halaman mushaf untuk baca offline |
-| Shortcut Keyboard | ← → pindah ayat • Space play/pause • PgUp/PgDn halaman • Ctrl+F cari |
+| Unduh Massal | Download semua/rentang halaman mushaf & audio satu surah penuh — offline |
+| Shortcut Keyboard | ← → pindah ayat • Space play/pause • PgUp/PgDn halaman • Ctrl+F cari • Esc keluar fokus |
 | Cache Offline | Audio, gambar mushaf, terjemahan & tafsir tersimpan otomatis |
-| Simpan Posisi | Surah, ayat, qari, mode, zoom — tersimpan otomatis |
+| Simpan Posisi | Surah, ayat, qari, mode, zoom, tema — tersimpan otomatis |
+| Ikon | Ikon aplikasi kustom |
 
-## Sumber Data — semua dari situs resmi KSU
+---
 
-Semua konten di aplikasi ini diambil langsung dari server **[quran.ksu.edu.sa](https://quran.ksu.edu.sa)** (Electronic Moshaf Project, King Saud University). Endpoint yang digunakan:
+## Download & Menjalankan
 
-**Audio (Talaqah per-ayat):**
-
-| Konten | Endpoint |
-|---|---|
-| Audio ayat per qari | `https://quran.ksu.edu.sa/ayat/mp3/{qari}/{SSS}{AAA}.mp3` — contoh: `ayat/mp3/Husary_64kbps/056018.mp3` |
-| Audhubillah (intro) | `https://quran.ksu.edu.sa/ayat/mp3/all/audhubillah.mp3` |
-| Basmalah per qari | `https://quran.ksu.edu.sa/ayat/mp3/{qari}/001001.mp3` |
-| Voice translation | folder `English_Walk`, `fr.leclerc_128kbs`, `ur.khan_46kbs`, `Bosnian_Korkut_128kbps` |
-
-**Gambar mushaf (604 halaman):**
-
-| Mushaf | Endpoint |
-|---|---|
-| Hafs | `https://quran.ksu.edu.sa/ayat/safahat1/{halaman}.png` |
-| Rewayat Warsh | `https://quran.ksu.edu.sa/warsh/{halaman}.png` |
-| Hafs Tajweed | `https://quran.ksu.edu.sa/tajweed_png/{halaman}.png` |
-
-**Teks, tafsir, terjemahan, pencarian** — via `https://quran.ksu.edu.sa/interface.php?ui=pc`:
-
-| Konten | Endpoint |
-|---|---|
-| Tafsir per-ayat | `&do=tafsir&author={kitab}&sura={s}&aya={a}` |
-| Terjemahan (rentang) | `&do=tarjama&tafsir={kode}&b_sura=…&b_aya=…&e_sura=…&e_aya=…` |
-| Pencarian ayat | `&do=search` (POST `query`) |
-| Koordinat highlight ayat di mushaf | `&do=hilites&page={halaman}` |
-
-**Daftar kitab tafsir** (key `author`): `indonesian` (Jalalain — Indonesia), `muyassar`, `sa3dy`, `baghawy`, `katheer`, `qortoby`, `tabary`, `e3rab`, `russian` (Tafhim — Rusia)
-
-**Kode terjemahan** (key `tafsir` pada tarjama): `id_indonesian` (Indonesia), `en_sh` (English — Saheeh International), `ms_basmeih` (Melayu), `ar_ayat`/`ar_ayat_safy`/`ar_mu`/`ar_ma3any` (Arab), `ur_gl` (Urdu), `ru_ku` (Rusia), `fr_ha`, `es_navio`, `de_bo`, `it_piccardo`, `pt_elhayek`, `nl_siregar`, `bs_korkut`, `sq_nahi`, `sv_bernstrom`, `tr_diyanet`, `ku_asan`, `pr_tagi`, `ml_abdulhameed`
-
-**Metadata halaman, juz & sajdah:**
-- `https://quran.ksu.edu.sa/js/quran-data.js` — pemetaan halaman (Page/Page_warsh/Page2), juz, dan daftar ayat sajdah; sumber aslinya metadata **[Tanzil.net](https://tanzil.net)** (lisensi GPL), digunakan oleh situs KSU
-
-**Peta konfigurasi** (daftar 43 qari, jenis mushaf, kode terjemahan) diekstrak dari script situs: `https://quran.ksu.edu.sa/provider/index.php?g=scr`
-
-**Tautan tafsir versi web** (tombol "Buka di browser"): `https://quran.ksu.edu.sa/tafseer/{kitab}/sura{s}-aya{a}.html`
-
-## Menjalankan
-
-**Cara termudah — exe portable (tidak perlu install apa pun):**
-
-Unduh dari [Google Drive](https://drive.google.com/drive/folders/1A0AvGWNaHMU2bZtrvoES25RUh-pr6VMx?usp=sharing) atau [GitHub Releases](https://github.com/linducip2208/alquran/releases), lalu jalankan `QuranDesktop.exe`.
+**Cara termudah:** unduh exe portable dari [Google Drive](https://drive.google.com/drive/folders/1A0AvGWNaHMU2bZtrvoES25RUh-pr6VMx?usp=sharing) atau [GitHub Releases](https://github.com/linducip2208/alquran/releases), lalu jalankan — tidak perlu install apa pun.
 
 **Dari source code:**
-
 1. Install [.NET 7 SDK](https://dotnet.microsoft.com/download/dotnet/7.0)
 2. `dotnet build QuranDesktop -c Release`
 3. `dotnet run --project QuranDesktop`
 
-> Koneksi internet diperlukan saat pertama membuka konten; setelah tersimpan di cache, dapat diakses offline.
+Koneksi internet diperlukan saat pertama membuka konten; setelah tersimpan di cache, dapat diakses offline.
 
-## Struktur Project
+---
 
-```
-QuranDesktop/
-├── Controls/          MushafView, TextModeControl, HifzControl, SearchDialog, DownloadDialog
-├── Data/quran-data.js Metadata halaman & juz (Tanzil, embedded resource)
-├── MainForm.cs        Orkestrasi UI & pemutar audio (MCI/winmm — tanpa dependency)
-├── KsuApi.cs          Klien API tafsir/terjemahan/pencarian/koordinat KSU
-├── QuranData.cs       Parser metadata halaman, juz, sajdah
-└── Reciters.cs, Translations.cs, Tafsirs.cs, MushafTypes.cs
-```
+## Sumber Data
+
+Semua konten diambil langsung dari server **[quran.ksu.edu.sa](https://quran.ksu.edu.sa)** (Electronic Moshaf Project, King Saud University):
+
+- **Audio:** `https://quran.ksu.edu.sa/ayat/mp3/{qari}/{SSS}{AAA}.mp3` (+ audhubillah & basmalah, voice translation)
+- **Gambar mushaf:** `https://quran.ksu.edu.sa/ayat/safahat1/{hal}.png` (Hafs), `/warsh/{hal}.png`, `/tajweed_png/{hal}.png`
+- **Tafsir / terjemahan / pencarian / koordinat highlight:** `https://quran.ksu.edu.sa/interface.php?ui=pc&do=tafsir|tarjama|search|hilites`
+- **Metadata halaman & juz:** `https://quran.ksu.edu.sa/js/quran-data.js` (sumber: [Tanzil.net](https://tanzil.net), GPL)
+- **Tautan tafsir web:** `https://quran.ksu.edu.sa/tafseer/{kitab}/sura{s}-aya{a}.html`
 
 ## Kredit
 
-- **Sumber & data:** [Quran KSU Electronic Moshaf Project](https://quran.ksu.edu.sa) — Electronic Moshaf Project, King Saud University
+- **Sumber & data:** [Quran KSU Electronic Moshaf Project](https://quran.ksu.edu.sa) — King Saud University
 - **Metadata Quran:** [Tanzil.net](https://tanzil.net) (GPL)
-- **Dibuat ulang untuk Windows 10 & 11:** Lindu Cipta Pranayama (WA 0812-9605-2010)
+- **Dibuat ulang untuk Windows 10 & 11:** Lindu Cipta Pranayama (WA +62 812-9605-2010)
 - **Dibangun dengan:** GLM 5.3 Flash
