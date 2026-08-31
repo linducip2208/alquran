@@ -244,7 +244,7 @@ internal sealed class MainForm : Form
         _btnPageNext = new Button { Text = "Hal ▶", Width = 56 };
         _btnZoomIn = new Button { Text = "Zoom +", Width = 64 };
         _btnZoomOut = new Button { Text = "Zoom −", Width = 64 };
-        _btnFit = new Button { Text = "Fit", Width = 46 };
+        _btnFit = new Button { Text = "100%", Width = 52 };
         _btnDownload = new Button { Text = "⬇ Unduh", Width = 80 };
 
         flow1.Controls.Add(new Label { Text = "Mode:", AutoSize = true, Padding = new Padding(0, 8, 0, 0) });
@@ -626,7 +626,7 @@ internal sealed class MainForm : Form
         _btnPageNext.Click += (_, _) => StepPage(1);
         _btnZoomIn.Click += (_, _) => { _mushafView.SetZoom(_mushafView.Zoom * 1.2f); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
         _btnZoomOut.Click += (_, _) => { _mushafView.SetZoom(_mushafView.Zoom / 1.2f); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
-        _btnFit.Click += (_, _) => { _mushafView.FitToHeight(); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
+        _btnFit.Click += (_, _) => { _mushafView.FitToScreen(); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
         _btnDownload.Click += (_, _) =>
         {
             var mt = CurrentMushafType;
@@ -1285,7 +1285,14 @@ internal sealed class MainForm : Form
         try
         {
             await _mushafView.LoadAsync(page, mt.Key, ProgramServices.Http, CancellationToken.None);
-            _mushafView.SetZoom(_settings.Zoom);
+            if (_settings.Zoom >= 0.9f && _settings.Zoom <= 1.1f)
+            {
+                _mushafView.FitToScreen();
+            }
+            else
+            {
+                _mushafView.SetZoom(_settings.Zoom);
+            }
 
             var (rightPage, leftPage) = _mushafView.SpreadPages;
             int pageCount = QuranData.PageCount(mt.PageKey);

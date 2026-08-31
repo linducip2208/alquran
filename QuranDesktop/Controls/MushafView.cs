@@ -148,12 +148,23 @@ internal sealed class MushafView : Panel
         _right.Pic.Invalidate();
     }
 
-    public void FitToHeight()
+    public void FitToScreen()
     {
-        var pic = _left.Img != null ? _left.Pic : _right.Pic;
-        if (pic.Height < 40 || Height < 80) return;
-        float factor = (Height - 12f) / pic.Height;
-        SetZoom(_zoom * factor);
+        var img = _left.Img ?? _right.Img;
+        if (img == null || img.Width == 0) return;
+
+        int availW = Math.Max(100, ClientSize.Width - Padding.Horizontal - 4);
+        int slotW = (availW - Gap) / 2;
+        int availH = Math.Max(100, ClientSize.Height - 16);
+
+        float fitW = (float)slotW / img.Width;
+        float fitH = (float)availH / img.Height;
+        float fit = Math.Min(fitW, fitH);
+
+        SetZoom(fit);
+        AutoScrollPosition = new Point(0, 0);
+        _left.Pic.Invalidate();
+        _right.Pic.Invalidate();
     }
 
     public float Zoom => _zoom;
