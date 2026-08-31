@@ -13,6 +13,7 @@ internal sealed class MushafView : Panel
     }
 
     private const int Gap = 10;
+    private const int TopMargin = 38;
     private const float HitRadius = 75f;
 
     private readonly PageBox _left = new();
@@ -171,7 +172,7 @@ internal sealed class MushafView : Panel
         if (img == null || img.Width == 0) return;
 
         int availW = Math.Max(100, ClientSize.Width - Padding.Horizontal - 4);
-        int availH = Math.Max(100, ClientSize.Height - 16);
+        int availH = Math.Max(100, ClientSize.Height - TopMargin - 20);
 
         float fitW, fitH;
         if (SinglePage)
@@ -206,7 +207,7 @@ internal sealed class MushafView : Panel
             {
                 int w = Math.Max(80, (int)(availW * _zoom));
                 int h = Math.Max(100, w * _right.Img.Height / _right.Img.Width);
-                _right.Pic.SetBounds(Padding.Left, 0, w, h);
+                _right.Pic.SetBounds(Padding.Left, TopMargin, w, h);
             }
             return;
         }
@@ -219,7 +220,7 @@ internal sealed class MushafView : Panel
         {
             int w = Math.Max(80, (int)(slotW * _zoom));
             int h = Math.Max(100, w * _left.Img.Height / _left.Img.Width);
-            _left.Pic.SetBounds(0, 0, w, h);
+            _left.Pic.SetBounds(0, TopMargin, w, h);
         }
 
         if (_right.Img != null)
@@ -227,7 +228,7 @@ internal sealed class MushafView : Panel
             int w = Math.Max(80, (int)(slotW * _zoom));
             int h = Math.Max(100, w * _right.Img.Height / _right.Img.Width);
             int x = _left.Img != null && _left.Pic.Visible ? _left.Pic.Right + Gap : Padding.Left;
-            _right.Pic.SetBounds(x, 0, w, h);
+            _right.Pic.SetBounds(x, TopMargin, w, h);
         }
 
         ClampScroll();
@@ -255,6 +256,14 @@ internal sealed class MushafView : Panel
         _right.Pic.Invalidate();
     }
 
+    public int ScrollTopPixel
+    {
+        get => Math.Max(0, -AutoScrollPosition.Y);
+        set => AutoScrollPosition = new Point(Math.Max(0, -AutoScrollPosition.X), Math.Max(0, value));
+    }
+
+    public int TopMarginPx => TopMargin;
+
     protected override void OnMouseWheel(MouseEventArgs e)
     {
         if (ModifierKeys.HasFlag(Keys.Control))
@@ -280,6 +289,7 @@ internal sealed class MushafView : Panel
                 return;
             }
         }
+        ScrollToTop();
     }
 
     private PageBox? HitBox(PictureBox pic) => pic == _left.Pic ? _left : pic == _right.Pic ? _right : null;
