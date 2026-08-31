@@ -31,6 +31,7 @@ internal sealed class AyahImageDialog : Form
         _arti = arti;
 
         Text = $"Kartu Ayat — {surah}:{ayah}";
+        ClientSize = new Size(640, 420);
         StartPosition = FormStartPosition.CenterParent;
         MinimumSize = new Size(420, 300);
 
@@ -94,7 +95,7 @@ internal sealed class AyahImageDialog : Form
         _btnSave.Click += (_, _) => SavePng();
         _btnClose.Click += (_, _) => Close();
 
-        Load += (_, _) => { RenderCard(); FitWindow(); };
+        Load += (_, _) => RenderCard();
     }
 
     private void RenderCard()
@@ -160,14 +161,6 @@ internal sealed class AyahImageDialog : Form
         _pic.Image = bmp;
         _pic.Size = bmp.Size;
         old?.Dispose();
-    }
-
-    private void FitWindow()
-    {
-        var wa = Screen.FromControl(this).WorkingArea;
-        int targetW = Math.Max(MinimumSize.Width, Math.Min(_cardSize.Width + 16, wa.Width - 40));
-        int targetH = Math.Min(_cardSize.Height + 46 + 12, wa.Height - 60);
-        ClientSize = new Size(targetW, targetH);
     }
 
     private void SavePng()
