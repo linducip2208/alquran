@@ -36,6 +36,7 @@ internal sealed class AppSettings
     public bool FirstRunDone { get; set; } = false;
     public int Volume { get; set; } = 80;
     public float Zoom { get; set; } = 1f;
+    public bool SinglePage { get; set; } = false;
 
     private static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

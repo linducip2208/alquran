@@ -52,7 +52,11 @@ internal sealed class MushafView : Panel
 
     public int CurrentPage { get; private set; } = -1;
 
-    public (int Right, int Left) SpreadPages => (_right.Page, _left.Page);
+    public bool SinglePage { get; set; }
+
+    public (int Right, int Left) SpreadPages => SinglePage
+        ? (CurrentPage, SinglePage ? CurrentPage : _left.Page)
+        : (_right.Page, _left.Page);
 
     public MushafView()
     {
@@ -82,27 +86,40 @@ internal sealed class MushafView : Panel
         _mushafKey = mushafKey;
         CurrentPage = page;
 
-        int rightPage = page % 2 == 1 ? page : page - 1;
-        int leftPage = rightPage + 1;
-
-        bool sameSpread = _right.Page == rightPage && _left.Page == leftPage && _right.Img != null && _left.Img != null;
-
-        var rightTask = LoadPageBoxAsync(_right, rightPage, ct);
-        var leftTask = LoadPageBoxAsync(_left, leftPage, ct);
-        await rightTask;
-        await leftTask;
-
-        if (!sameSpread)
+        int rightPage;
+        int leftPage;
+        if (SinglePage)
         {
-            LayoutPages();
-            ImageChanged?.Invoke();
+            rightPage = page;
+            leftPage = -1;
+            await LoadPageBoxAsync(_right, rightPage, ct);
+            if (_left.Page != -1)
+            {
+                var oldLeftImg = _left.Pic.Image;
+                _left.Img = null;
+                _left.Page = -1;
+                _left.Hilites = new Dictionary<string, int[]>();
+                _left.Pic.Image = null;
+                oldLeftImg?.Dispose();
+            }
         }
         else
         {
-            LayoutPages();
-            _left.Pic.Invalidate();
-            _right.Pic.Invalidate();
+            rightPage = page % 2 == 1 ? page : page - 1;
+            leftPage = rightPage + 1;
+            var rightTask = LoadPageBoxAsync(_right, rightPage, ct);
+            var leftTask = LoadPageBoxAsync(_left, leftPage, ct);
+            await rightTask;
+            await leftTask;
         }
+
+        bool sameSpread = _right.Page == rightPage && (_left.Page == leftPage || SinglePage) && _right.Img != null;
+        sameSpread = _right.Page == rightPage && _right.Img != null;
+
+        LayoutPages();
+        _left.Pic.Invalidate();
+        _right.Pic.Invalidate();
+        ImageChanged?.Invoke();
     }
 
     private async Task LoadPageBoxAsync(PageBox box, int page, CancellationToken ct)
@@ -150,18 +167,26 @@ internal sealed class MushafView : Panel
 
     public void FitToScreen()
     {
-        var img = _left.Img ?? _right.Img;
+        var img = _right.Img ?? _left.Img;
         if (img == null || img.Width == 0) return;
 
         int availW = Math.Max(100, ClientSize.Width - Padding.Horizontal - 4);
-        int slotW = (availW - Gap) / 2;
         int availH = Math.Max(100, ClientSize.Height - 16);
 
-        float fitW = (float)slotW / img.Width;
-        float fitH = (float)availH / img.Height;
-        float fit = Math.Min(fitW, fitH);
+        float fitW, fitH;
+        if (SinglePage)
+        {
+            fitW = (float)availW / img.Width;
+            fitH = (float)availH / img.Height;
+        }
+        else
+        {
+            int slotW = (availW - Gap) / 2;
+            fitW = (float)slotW / img.Width;
+            fitH = (float)availH / img.Height;
+        }
 
-        SetZoom(fit);
+        SetZoom(Math.Min(fitW, fitH));
         AutoScrollPosition = new Point(0, 0);
         _left.Pic.Invalidate();
         _right.Pic.Invalidate();
@@ -172,6 +197,24 @@ internal sealed class MushafView : Panel
     private void LayoutPages()
     {
         int availW = Math.Max(200, ClientSize.Width - Padding.Horizontal - 4);
+
+        if (SinglePage)
+        {
+            if (_right.Img != null)
+            {
+                int w = Math.Max(80, (int)(availW * _zoom));
+                int h = Math.Max(100, w * _right.Img.Height / _right.Img.Width);
+                int x = Math.Max(0, (availW - w) / 2);
+                _right.Pic.SetBounds(x, 0, w, h);
+            }
+            if (_left.Img != null)
+            {
+                _left.Pic.SetBounds(-9999, 0, 10, 10);
+            }
+            AutoScrollMargin = new Size(0, 12);
+            return;
+        }
+
         int slotW = (availW - Gap) / 2;
 
         if (_right.Img != null)

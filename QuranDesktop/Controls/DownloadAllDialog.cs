@@ -99,7 +99,7 @@ internal sealed class DownloadAllDialog : Form
         if (_chkText.Checked) { mb += 228 * 0.01; files += 228; }
         if (_chkAudio.Checked)
         {
-            var r = (Reciter)((ComboItem)_cmbQaree.SelectedItem)!;
+            var r = (Reciter)((ComboItem)_cmbQaree.SelectedItem!).Value!;
             double perFile = r.Folder.Contains("128", StringComparison.OrdinalIgnoreCase) ? 0.28
                 : r.Folder.Contains("192", StringComparison.OrdinalIgnoreCase) ? 0.42
                 : r.Folder.Contains("64", StringComparison.OrdinalIgnoreCase) ? 0.14
@@ -135,7 +135,7 @@ internal sealed class DownloadAllDialog : Form
         }
         if (_chkAudio.Checked)
         {
-            var r = (Reciter)((ComboItem)_cmbQaree.SelectedItem)!;
+            var r = (Reciter)((ComboItem)_cmbQaree.SelectedItem!).Value!;
             for (int s = 1; s <= 114; s++)
             {
                 int n = QuranData.SurahAyahCount(s);

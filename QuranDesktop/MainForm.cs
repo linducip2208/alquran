@@ -53,6 +53,7 @@ internal sealed class MainForm : Form
     private Button _btnZoomIn = new();
     private Button _btnZoomOut = new();
     private Button _btnFit = new();
+    private CheckBox _chkSinglePage = new();
     private Button _btnDownload = new();
     private CheckBox _chkAutoNext = new();
     private CheckBox _chkPlayOnClick = new();
@@ -246,6 +247,7 @@ internal sealed class MainForm : Form
         _btnZoomIn = new Button { Text = "Zoom +", Width = 64 };
         _btnZoomOut = new Button { Text = "Zoom −", Width = 64 };
         _btnFit = new Button { Text = "100%", Width = 52 };
+        _chkSinglePage = new CheckBox { Text = "1 Hal.", AutoSize = true, Padding = new Padding(2, 6, 0, 0) };
         _btnDownload = new Button { Text = "⬇ Unduh", Width = 80 };
 
         flow1.Controls.Add(new Label { Text = "Mode:", AutoSize = true, Padding = new Padding(0, 8, 0, 0) });
@@ -264,6 +266,7 @@ internal sealed class MainForm : Form
         flow1.Controls.Add(_btnZoomIn);
         flow1.Controls.Add(_btnZoomOut);
         flow1.Controls.Add(_btnFit);
+        flow1.Controls.Add(_chkSinglePage);
         flow1.Controls.Add(_btnDownload);
         flow1.Controls.Add(_chkOverlay);
 
@@ -483,6 +486,8 @@ internal sealed class MainForm : Form
 
         _chkAutoNext.Checked = _settings.AutoNext;
         _chkPlayOnClick.Checked = _settings.PlayOnClick;
+        _chkSinglePage.Checked = _settings.SinglePage;
+        _mushafView.SinglePage = _settings.SinglePage;
         _chkTafsirPanel.Checked = _settings.ShowTafsirPanel;
         _chkShowTrans.Checked = _settings.ShowTranslation;
         _chkInlineTafsir.Checked = _settings.ShowInlineTafsir;
@@ -630,6 +635,16 @@ internal sealed class MainForm : Form
         _btnZoomIn.Click += (_, _) => { _mushafView.SetZoom(_mushafView.Zoom * 1.2f); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
         _btnZoomOut.Click += (_, _) => { _mushafView.SetZoom(_mushafView.Zoom / 1.2f); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
         _btnFit.Click += (_, _) => { _mushafView.FitToScreen(); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
+        _chkSinglePage.CheckedChanged += (_, _) =>
+        {
+            _settings.SinglePage = _chkSinglePage.Checked;
+            _settings.Save();
+            _mushafView.SinglePage = _chkSinglePage.Checked;
+            if (CurrentMode == "mushaf")
+            {
+                _ = LoadMushafPageAsync(_mushafView.CurrentPage > 0 ? _mushafView.CurrentPage : _curSurah >= 1 ? QuranData.FindPage(CurrentMushafType?.PageKey ?? "Page", _curSurah, _curAyah) : 1, _curSurah, _curAyah);
+            }
+        };
         _btnDownload.Click += (_, _) =>
         {
             var mt = CurrentMushafType;
@@ -1148,6 +1163,7 @@ internal sealed class MainForm : Form
         _cmbJuz.Visible = mode == "mushaf";
         _btnZoomIn.Visible = _btnZoomOut.Visible = mode == "mushaf";
         _btnFit.Visible = mode == "mushaf";
+        _chkSinglePage.Visible = mode == "mushaf";
         _btnDownload.Visible = mode == "mushaf";
 
         if (mode == "teks")
