@@ -208,7 +208,6 @@ internal sealed class MushafView : Panel
                 int h = Math.Max(100, w * _right.Img.Height / _right.Img.Width);
                 _right.Pic.SetBounds(Padding.Left, 0, w, h);
             }
-            AutoScrollMargin = new Size(0, 12);
             return;
         }
 
@@ -231,7 +230,29 @@ internal sealed class MushafView : Panel
             _right.Pic.SetBounds(x, 0, w, h);
         }
 
-        AutoScrollMargin = new Size(0, 12);
+        ClampScroll();
+    }
+
+    private void ClampScroll()
+    {
+        try
+        {
+            int curX = Math.Max(0, -AutoScrollPosition.X);
+            int curY = Math.Max(0, -AutoScrollPosition.Y);
+            int maxX = Math.Max(0, DisplayRectangle.Width - ClientSize.Width);
+            int maxY = Math.Max(0, DisplayRectangle.Height - ClientSize.Height);
+            AutoScrollPosition = new Point(Math.Min(curX, maxX), Math.Min(curY, maxY));
+        }
+        catch
+        {
+        }
+    }
+
+    public void ScrollToTop()
+    {
+        AutoScrollPosition = new Point(0, 0);
+        _left.Pic.Invalidate();
+        _right.Pic.Invalidate();
     }
 
     protected override void OnMouseWheel(MouseEventArgs e)

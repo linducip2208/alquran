@@ -56,10 +56,24 @@ internal sealed class HifzControl : Panel
         top.Controls.Add(_btnReveal);
         top.Controls.Add(_btnPlay);
 
-        Controls.Add(_txt);
-        Controls.Add(_lblInfo);
-        Controls.Add(top);
-        _lblInfo.BringToFront();
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            RowCount = 3,
+            ColumnCount = 1,
+            BackColor = Color.White,
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+
+        top.Dock = DockStyle.Fill;
+        layout.Controls.Add(top, 0, 0);
+        layout.Controls.Add(_lblInfo, 0, 1);
+        layout.Controls.Add(_txt, 0, 2);
+
+        Controls.Add(layout);
 
         _txt.ForeColor = Color.Gray;
         _txt.Text = "Klik 'Soal (Acak)' untuk memulai — audio diputar & teks disembunyikan, tebak dulu lalu klik Lihat.";

@@ -53,6 +53,7 @@ internal sealed class MainForm : Form
     private Button _btnZoomIn = new();
     private Button _btnZoomOut = new();
     private Button _btnFit = new();
+    private Button _btnTop = new();
     private CheckBox _chkSinglePage = new();
     private Button _btnDownload = new();
     private CheckBox _chkAutoNext = new();
@@ -107,8 +108,7 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        WmpEngine wmp = new();
-        _audio = wmp.Available ? wmp : new MciEngine();
+        _audio = new NAudioEngine();
         _audio.VolumePercent = Math.Clamp(_settings.Volume, 0, 100);
         _audio.Finished += () =>
         {
@@ -247,6 +247,7 @@ internal sealed class MainForm : Form
         _btnZoomIn = new Button { Text = "Zoom +", Width = 64 };
         _btnZoomOut = new Button { Text = "Zoom −", Width = 64 };
         _btnFit = new Button { Text = "100%", Width = 52 };
+        _btnTop = new Button { Text = "⤒", Width = 40 };
         _chkSinglePage = new CheckBox { Text = "1 Hal.", AutoSize = true, Padding = new Padding(2, 6, 0, 0) };
         _btnDownload = new Button { Text = "⬇ Unduh", Width = 80 };
 
@@ -266,6 +267,7 @@ internal sealed class MainForm : Form
         flow1.Controls.Add(_btnZoomIn);
         flow1.Controls.Add(_btnZoomOut);
         flow1.Controls.Add(_btnFit);
+        flow1.Controls.Add(_btnTop);
         flow1.Controls.Add(_chkSinglePage);
         flow1.Controls.Add(_btnDownload);
         flow1.Controls.Add(_chkOverlay);
@@ -635,6 +637,7 @@ internal sealed class MainForm : Form
         _btnZoomIn.Click += (_, _) => { _mushafView.SetZoom(_mushafView.Zoom * 1.2f); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
         _btnZoomOut.Click += (_, _) => { _mushafView.SetZoom(_mushafView.Zoom / 1.2f); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
         _btnFit.Click += (_, _) => { _mushafView.FitToScreen(); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
+        _btnTop.Click += (_, _) => _mushafView.ScrollToTop();
         _chkSinglePage.CheckedChanged += (_, _) =>
         {
             _settings.SinglePage = _chkSinglePage.Checked;
@@ -1163,6 +1166,7 @@ internal sealed class MainForm : Form
         _cmbJuz.Visible = mode == "mushaf";
         _btnZoomIn.Visible = _btnZoomOut.Visible = mode == "mushaf";
         _btnFit.Visible = mode == "mushaf";
+        _btnTop.Visible = mode == "mushaf";
         _chkSinglePage.Visible = mode == "mushaf";
         _btnDownload.Visible = mode == "mushaf";
 
@@ -2012,6 +2016,9 @@ internal sealed class MainForm : Form
                     return true;
                 case Keys.Escape when _focusMode:
                     SetFocusMode(false);
+                    return true;
+                case Keys.Home when CurrentMode == "mushaf":
+                    _mushafView.ScrollToTop();
                     return true;
                 case Keys.Alt | Keys.Left:
                     NavBack();
