@@ -119,8 +119,12 @@ internal sealed class HifzControl : Panel
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var raw = await ProgramServices.Api.GetTafsirAsync("muyassar", s, a, cts.Token);
-            string ayahText = KsuApi.AyahTextFromTafsirRaw(raw);
+            string ayahText = MadinahText.Get(s, a) ?? "";
+            if (string.IsNullOrWhiteSpace(ayahText))
+            {
+                var raw = await ProgramServices.Api.GetTafsirAsync("muyassar", s, a, cts.Token);
+                ayahText = KsuApi.AyahTextFromTafsirRaw(raw);
+            }
             _txt.Tag = ayahText;
         }
         catch (Exception ex)
@@ -154,7 +158,7 @@ internal sealed class HifzControl : Panel
         if (_revealed)
         {
             _txt.RightToLeft = RightToLeft.Yes;
-            _txt.Font = new Font("Traditional Arabic", 20f);
+            _txt.Font = MadinahFont.Create(18f);
             _txt.AppendText(text);
         }
         else

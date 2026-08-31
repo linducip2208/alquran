@@ -15,7 +15,7 @@ internal sealed class DailyAyahDialog : Form
         Dock = DockStyle.Fill,
         TextAlign = ContentAlignment.MiddleCenter,
         RightToLeft = RightToLeft.Yes,
-        Font = new Font("Traditional Arabic", 20f),
+        Font = MadinahFont.Create(20f),
         Padding = new Padding(14),
         Text = "Memuat…",
     };
@@ -89,8 +89,13 @@ internal sealed class DailyAyahDialog : Form
     {
         try
         {
-            var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", _ayah.S, CancellationToken.None);
-            if (arabic.TryGetValue(_ayah.A, out var av)) _lblArab.Text = av;
+            string av = MadinahText.Get(_ayah.S, _ayah.A) ?? "";
+            if (string.IsNullOrWhiteSpace(av))
+            {
+                var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", _ayah.S, CancellationToken.None);
+                arabic.TryGetValue(_ayah.A, out av);
+            }
+            if (!string.IsNullOrWhiteSpace(av)) _lblArab.Text = av;
 
             var t = ProgramServices.ActiveTranslationKey;
             if (!string.IsNullOrEmpty(t))
@@ -113,8 +118,12 @@ internal sealed class DailyAyahDialog : Form
     {
         try
         {
-            var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", _ayah.S, CancellationToken.None);
-            string arab = arabic.TryGetValue(_ayah.A, out var av) ? av : "";
+            string arab = MadinahText.Get(_ayah.S, _ayah.A) ?? "";
+            if (string.IsNullOrWhiteSpace(arab))
+            {
+                var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", _ayah.S, CancellationToken.None);
+                arabic.TryGetValue(_ayah.A, out arab);
+            }
             var t = ProgramServices.ActiveTranslationKey;
             string arti = "";
             if (!string.IsNullOrEmpty(t))
@@ -134,8 +143,12 @@ internal sealed class DailyAyahDialog : Form
     {
         try
         {
-            var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", _ayah.S, CancellationToken.None);
-            string arab = arabic.TryGetValue(_ayah.A, out var av) ? av : "";
+            string arab = MadinahText.Get(_ayah.S, _ayah.A) ?? "";
+            if (string.IsNullOrWhiteSpace(arab))
+            {
+                var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", _ayah.S, CancellationToken.None);
+                arabic.TryGetValue(_ayah.A, out arab);
+            }
             var t = ProgramServices.ActiveTranslationKey;
             string arti = "";
             if (!string.IsNullOrEmpty(t))

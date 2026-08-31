@@ -12,6 +12,8 @@
   <ItemGroup>
     <EmbeddedResource Include="Data\quran-data.js" LogicalName="quran-data.js" />
     <EmbeddedResource Include="Data\inspirasi.json" LogicalName="inspirasi.json" />
+    <EmbeddedResource Include="Data\madinah-text.json" LogicalName="madinah-text.json" />
+    <EmbeddedResource Include="Resources\UthmanicHafs.ttf" LogicalName="UthmanicHafs.ttf" />
   </ItemGroup>
 
   <ItemGroup>

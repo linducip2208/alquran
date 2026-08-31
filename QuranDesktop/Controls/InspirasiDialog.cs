@@ -136,8 +136,12 @@ internal sealed class InspirasiDialog : Form
 
     private async Task<(string Arab, string Arti)> FetchTextAsync(int s, int a)
     {
-        var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", s, CancellationToken.None);
-        string arab = arabic.TryGetValue(a, out var av) ? av : "";
+        string arab = MadinahText.Get(s, a) ?? "";
+        if (string.IsNullOrWhiteSpace(arab))
+        {
+            var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", s, CancellationToken.None);
+            arab = arabic.TryGetValue(a, out var av) ? av : "";
+        }
         string arti = "";
         var t = ProgramServices.ActiveTranslationKey;
         if (!string.IsNullOrEmpty(t))

@@ -105,12 +105,16 @@ internal sealed class DictationDialog : Form
         var (s, a) = _current.Value;
         try
         {
-            var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", s, CancellationToken.None);
+            string text = MadinahText.Get(s, a) ?? "";
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", s, CancellationToken.None);
+                text = arabic.TryGetValue(a, out var t) ? t : "(teks tidak tersedia)";
+            }
             var info = SurahList.Get(s);
             _txt.Clear();
             _txt.RightToLeft = RightToLeft.Yes;
-            _txt.Font = new Font("Traditional Arabic", 18f);
-            string text = arabic.TryGetValue(a, out var t) ? t : "(teks tidak tersedia)";
+            _txt.Font = MadinahFont.Create(18f);
             _txt.AppendText($"QS {s}. {info.EnglishName} — Ayat {a}\n\n{text}");
         }
         catch (Exception ex)

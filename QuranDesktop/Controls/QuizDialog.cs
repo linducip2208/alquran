@@ -62,7 +62,11 @@ internal sealed class QuizDialog : Form
         _lblAya.Text = "Memuat…";
         try
         {
-            _ayat = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", surah, CancellationToken.None);
+            _ayat = MadinahText.GetSurah(surah);
+            if (!MadinahText.Available || _ayat.Values.All(string.IsNullOrWhiteSpace))
+            {
+                _ayat = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", surah, CancellationToken.None);
+            }
             _surah = surah;
             SetRound(fromAya);
         }
@@ -114,7 +118,7 @@ internal sealed class QuizDialog : Form
                 Height = 40,
                 RightToLeft = RightToLeft.Yes,
                 TextAlign = ContentAlignment.MiddleRight,
-                Font = new Font("Traditional Arabic", 13f),
+                Font = MadinahFont.Create(15f),
             };
             b.Click += (_, _) =>
             {

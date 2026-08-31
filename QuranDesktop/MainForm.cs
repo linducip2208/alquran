@@ -27,9 +27,7 @@ internal sealed class MainForm : Form
     private Button _btnOpenTafsir = new();
     private readonly HashSet<(int Surah, int Ayah)> _searchHits = new();
 
-    private readonly Font _arabicFont = ResolveFont(
-        new[] { "KFGQPC HAFS Uthmanic Script", "KFGQPC Uthmanic Script HAFS", "Scheherazade New", "Amiri", "Traditional Arabic" },
-        22f);
+    private readonly Font _arabicFont = MadinahFont.Create(24f);
     private readonly Font _tafsirFont = ResolveFont(
         new[] { "Traditional Arabic", "Scheherazade New", "Amiri", "Segoe UI" },
         14f);
@@ -801,8 +799,7 @@ internal sealed class MainForm : Form
             try
             {
                 ShowStatus("Menyiapkan kartu ayat…");
-                var arabic = await TarjamaAsync("ar_ayat", _curSurah);
-                string arab = arabic.TryGetValue(_curAyah, out var a) ? a : "";
+                string arab = MadinahText.Get(_curSurah, _curAyah) ?? "";
                 string arti = "";
                 var t = CurrentTranslation;
                 if (t != null)
@@ -1163,7 +1160,11 @@ internal sealed class MainForm : Form
         if (_renderedSurah == surah && _curAyahs.Count > 0) return;
 
         ShowStatus("Memuat surah…");
-        var arabic = await TarjamaAsync("ar_ayat", surah);
+        var arabic = MadinahText.GetSurah(surah);
+        if (!MadinahText.Available || arabic.Values.All(string.IsNullOrWhiteSpace))
+        {
+            arabic = await TarjamaAsync("ar_ayat", surah);
+        }
         var trans = CurrentTranslation;
         Dictionary<int, string>? transMap = null;
         if (trans != null && trans.Key != "ar_ayat")

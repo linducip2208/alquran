@@ -86,7 +86,7 @@ internal sealed class AyahImageDialog : Form
 
         var info = SurahList.Get(_surah);
         using var headFont = new Font("Segoe UI", 11f, FontStyle.Bold);
-        using var arabFont = new Font("Traditional Arabic", 24f, FontStyle.Bold);
+        using var arabFont = MadinahFont.Create(28f);
         using var artiFont = new Font("Segoe UI", 11f);
         using var dark = new SolidBrush(Color.FromArgb(40, 60, 40));
         using var gold = new SolidBrush(Color.FromArgb(150, 110, 30));
