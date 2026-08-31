@@ -49,16 +49,42 @@ public sealed class KsuApi
         string key = $"{transKey}|{surah}";
         if (_tarjamaCache.TryGetValue(key, out var cached)) return cached;
 
+        string diskPath = Path.Combine(KsuAudio.CacheDir, "teks", transKey, surah + ".json");
+        if (File.Exists(diskPath))
+        {
+            try
+            {
+                using var fs = File.OpenRead(diskPath);
+                using var doc = await JsonDocument.ParseAsync(fs, cancellationToken: ct);
+                var diskMap = new Dictionary<int, string>();
+                if (doc.RootElement.TryGetProperty("ayat", out var ayatEl) && ayatEl.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var prop in ayatEl.EnumerateObject())
+                    {
+                        if (int.TryParse(prop.Name, out int a)) diskMap[a] = prop.Value.GetString() ?? "";
+                    }
+                }
+                if (diskMap.Count > 0)
+                {
+                    _tarjamaCache[key] = diskMap;
+                    return diskMap;
+                }
+            }
+            catch
+            {
+            }
+        }
+
         int eSura = surah < QuranData.SurahCount ? surah + 1 : surah;
         int eAya = surah < QuranData.SurahCount ? 1 : QuranData.SurahAyahCount(surah);
         string url = $"{InterfaceUrl}&do=tarjama&tafsir={Uri.EscapeDataString(transKey)}"
             + $"&b_sura={surah}&b_aya=1&e_sura={eSura}&e_aya={eAya}";
 
         using var stream = await _http.GetStreamAsync(url, ct);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
+        using var doc2 = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
 
         var map = new Dictionary<int, string>();
-        if (doc.RootElement.TryGetProperty("tafsir", out var taf) && taf.ValueKind == JsonValueKind.Object)
+        if (doc2.RootElement.TryGetProperty("tafsir", out var taf) && taf.ValueKind == JsonValueKind.Object)
         {
             foreach (var prop in taf.EnumerateObject())
             {
@@ -73,6 +99,31 @@ public sealed class KsuApi
                 }
             }
         }
+
+        if (map.Count > 0)
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(diskPath)!);
+                using var ms = new MemoryStream();
+                using (var writer = new Utf8JsonWriter(ms))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteStartObject("ayat");
+                    foreach (var (a, text) in map.OrderBy(k => k.Key))
+                    {
+                        writer.WriteString(a.ToString(), text);
+                    }
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                }
+                File.WriteAllBytes(diskPath, ms.ToArray());
+            }
+            catch
+            {
+            }
+        }
+
         _tarjamaCache[key] = map;
         return map;
     }

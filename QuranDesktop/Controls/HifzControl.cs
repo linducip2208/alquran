@@ -61,6 +61,9 @@ internal sealed class HifzControl : Panel
         Controls.Add(top);
         _lblInfo.BringToFront();
 
+        _txt.ForeColor = Color.Gray;
+        _txt.Text = "Klik 'Soal (Acak)' untuk memulai — audio diputar & teks disembunyikan, tebak dulu lalu klik Lihat.";
+
         for (int s = 1; s <= 114; s++)
         {
             var info = SurahList.Get(s);
@@ -122,6 +125,11 @@ internal sealed class HifzControl : Panel
             string ayahText = MadinahText.Get(s, a) ?? "";
             if (string.IsNullOrWhiteSpace(ayahText))
             {
+                var ar = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", s, cts.Token);
+                ayahText = ar.TryGetValue(a, out var at) ? at : "";
+            }
+            if (string.IsNullOrWhiteSpace(ayahText))
+            {
                 var raw = await ProgramServices.Api.GetTafsirAsync("muyassar", s, a, cts.Token);
                 ayahText = KsuApi.AyahTextFromTafsirRaw(raw);
             }
@@ -136,7 +144,11 @@ internal sealed class HifzControl : Panel
         {
             _busy = false;
             RenderText();
-            if (_current != null && _txt.Tag is string loaded && !string.IsNullOrEmpty(loaded))
+            if (_current != null && _txt.Tag is string loaded && string.IsNullOrWhiteSpace(loaded))
+            {
+                _lblInfo.Text += "  (teks tidak tersedia — cek koneksi lalu coba lagi)";
+            }
+            else if (_current != null && _txt.Tag is string ok && !string.IsNullOrWhiteSpace(ok))
             {
                 PlayRequested?.Invoke(_current.Value.Surah, _current.Value.Ayah);
             }

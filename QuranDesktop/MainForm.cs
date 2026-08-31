@@ -862,6 +862,11 @@ internal sealed class MainForm : Form
             using var d = new AudioDownloadDialog(r?.Key ?? "husary", _curSurah);
             d.ShowDialog(this);
         });
+        featuresMenu.Items.Add("Unduh Semua Teks & Terjemahan", null, (_, _) =>
+        {
+            using var d = new TextDownloadDialog(ProgramServices.ActiveTranslationKey ?? "id_indonesian");
+            d.ShowDialog(this);
+        });
         featuresMenu.Items.Add("Mini Player", null, (_, _) => ToggleMiniPlayer());
         featuresMenu.Items.Add("Pengingat Harian", null, (_, _) =>
         {
