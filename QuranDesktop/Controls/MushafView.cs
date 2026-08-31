@@ -1,5 +1,13 @@
 ﻿namespace QuranDesktop.Controls;
 
+internal enum MushafZoomMode
+{
+    FitSpread,
+    FitWidth,
+    Actual,
+    Manual,
+}
+
 internal sealed class MushafView : Panel
 {
     private sealed class PageBox
@@ -12,14 +20,21 @@ internal sealed class MushafView : Panel
         public float Scale => Img == null || Img.Width == 0 ? 1f : (float)Pic.Width / Img.Width;
     }
 
-    private const int Gap = 10;
-    private const int TopMargin = 38;
+    private const int Gap = 12;
+    private const int SafePad = 12;
+    private const int TopMargin = SafePad;
+    private const int BottomMargin = SafePad;
+    private static readonly int ScrollBarWidth = SystemInformation.VerticalScrollBarWidth;
     private const float HitRadius = 75f;
+    private const float ZoomStep = 1.15f;
+    private const float MinZoom = 0.15f;
+    private const float MaxZoom = 3f;
 
     private readonly PageBox _left = new();
     private readonly PageBox _right = new();
     private (int Surah, int Ayah)? _selected;
-    private float _zoom = 1f;
+    private MushafZoomMode _zoomMode = MushafZoomMode.FitSpread;
+    private float _manualZoom = 1f;
     private HttpClient _http = new();
     private string _mushafKey = "hafs";
     private readonly ToolTip _tip = new();
@@ -31,7 +46,6 @@ internal sealed class MushafView : Panel
     private bool _rightHover;
 
     public event Action<int, int>? AyahClicked;
-    public event Action? ImageChanged;
     public event Action? ZoomChanged;
 
     public Func<int, int, string>? TooltipProvider { get; set; }
@@ -59,6 +73,18 @@ internal sealed class MushafView : Panel
         ? (CurrentPage, -1)
         : (_right.Page, _left.Page);
 
+    public MushafZoomMode ZoomMode => _zoomMode;
+
+    public float CurrentScale => EffectiveScale();
+
+    public string ZoomLabel => _zoomMode switch
+    {
+        MushafZoomMode.FitSpread => SinglePage ? "Fit halaman" : "Fit 2 halaman",
+        MushafZoomMode.FitWidth => "Fit lebar",
+        MushafZoomMode.Actual => "100%",
+        _ => $"{Math.Round(CurrentScale * 100)}%",
+    };
+
     public MushafView()
     {
         DoubleBuffered = true;
@@ -69,6 +95,7 @@ internal sealed class MushafView : Panel
 
         foreach (var box in new[] { _left, _right })
         {
+            box.Pic.BorderStyle = BorderStyle.FixedSingle;
             box.Pic.MouseClick += OnPicMouseClick;
             box.Pic.MouseMove += OnPicMouseMove;
             box.Pic.MouseLeave += OnPicMouseLeave;
@@ -114,13 +141,10 @@ internal sealed class MushafView : Panel
             await leftTask;
         }
 
-        bool sameSpread = _right.Page == rightPage && (_left.Page == leftPage || SinglePage) && _right.Img != null;
-        sameSpread = _right.Page == rightPage && _right.Img != null;
-
         LayoutPages();
+        AutoScrollPosition = new Point(0, 0);
         _left.Pic.Invalidate();
         _right.Pic.Invalidate();
-        ImageChanged?.Invoke();
     }
 
     private async Task LoadPageBoxAsync(PageBox box, int page, CancellationToken ct)
@@ -158,89 +182,95 @@ internal sealed class MushafView : Panel
         ScrollToAyah(sel.Surah, sel.Ayah);
     }
 
-    public void SetZoom(float zoom)
+    private float EffectiveScale()
     {
-        _zoom = Math.Clamp(zoom, 0.15f, 2.5f);
+        var img = _right.Img ?? _left.Img;
+        if (img == null || img.Width == 0 || img.Height == 0)
+        {
+            return _zoomMode == MushafZoomMode.Manual ? Math.Clamp(_manualZoom, MinZoom, MaxZoom) : 1f;
+        }
+
+        int availW = Math.Max(120, ClientSize.Width - SafePad * 2);
+        int availH = Math.Max(120, ClientSize.Height - TopMargin - BottomMargin - 2);
+        float byWidth = SinglePage ? (float)availW / img.Width : (float)(availW - Gap) / (2 * img.Width);
+        float byHeight = (float)availH / img.Height;
+
+        return _zoomMode switch
+        {
+            MushafZoomMode.FitSpread => Math.Min(byWidth, byHeight),
+            MushafZoomMode.FitWidth => byWidth,
+            MushafZoomMode.Actual => 1f,
+            _ => Math.Clamp(_manualZoom, MinZoom, MaxZoom),
+        };
+    }
+
+    public void SetZoomMode(MushafZoomMode mode)
+    {
+        _zoomMode = mode;
+        RelayoutAndNotify();
+    }
+
+    public void SetManualZoom(float zoom)
+    {
+        _manualZoom = Math.Clamp(zoom, MinZoom, MaxZoom);
+        SetZoomMode(MushafZoomMode.Manual);
+    }
+
+    public void ZoomIn() => SetManualZoom(EffectiveScale() * ZoomStep);
+
+    public void ZoomOut() => SetManualZoom(EffectiveScale() / ZoomStep);
+
+    public void FitToScreen() => SetZoomMode(MushafZoomMode.FitSpread);
+
+    public void FitWidth() => SetZoomMode(MushafZoomMode.FitWidth);
+
+    public void ActualSize() => SetZoomMode(MushafZoomMode.Actual);
+
+    private void RelayoutAndNotify()
+    {
         LayoutPages();
         _left.Pic.Invalidate();
         _right.Pic.Invalidate();
+        ZoomChanged?.Invoke();
     }
-
-    public void FitToScreen()
-    {
-        var img = _right.Img ?? _left.Img;
-        if (img == null || img.Width == 0) return;
-
-        int availW = Math.Max(100, ClientSize.Width - Padding.Horizontal - 4);
-        int availH = Math.Max(100, ClientSize.Height - TopMargin * 2 - 20);
-
-        float fitW, fitH;
-        if (SinglePage)
-        {
-            fitW = (float)availW / img.Width;
-            fitH = (float)availH / img.Height;
-        }
-        else
-        {
-            int slotW = (availW - Gap) / 2;
-            fitW = (float)slotW / img.Width;
-            fitH = (float)availH / img.Height;
-        }
-
-        SetZoom(Math.Min(fitW, fitH));
-        AutoScrollPosition = new Point(0, 0);
-        _left.Pic.Invalidate();
-        _right.Pic.Invalidate();
-    }
-
-    public float Zoom => _zoom;
 
     private void LayoutPages()
     {
-        int availW = Math.Max(200, ClientSize.Width - Padding.Horizontal - 4);
-        int bottomPad = TopMargin;
+        var refImg = _right.Img ?? _left.Img;
+        if (refImg == null || refImg.Width == 0 || refImg.Height == 0) return;
 
-        if (SinglePage)
+        float scale = EffectiveScale();
+
+        int w = Math.Max(80, (int)MathF.Round(refImg.Width * scale));
+        int h = Math.Max(100, (int)MathF.Round(refImg.Height * scale));
+        bool twoPages = !SinglePage && _left.Img != null;
+
+        int clientW = ClientSize.Width;
+        int clientH = ClientSize.Height;
+        int totalW = twoPages ? w * 2 + Gap : w;
+        int availW = Math.Max(totalW, clientW - SafePad * 2);
+        int x0 = SafePad + Math.Max(0, (availW - totalW) / 2);
+        int y0 = TopMargin + Math.Max(0, (clientH - TopMargin - h - BottomMargin) / 2);
+
+        if (twoPages)
+        {
+            int wl = Math.Max(80, (int)MathF.Round(_left.Img!.Width * scale));
+            int hl = Math.Max(100, (int)MathF.Round(_left.Img.Height * scale));
+            _left.Pic.Visible = true;
+            _left.Pic.SetBounds(x0, y0, wl, hl);
+            _right.Pic.Visible = true;
+            _right.Pic.SetBounds(x0 + wl + Gap, y0, w, h);
+        }
+        else
         {
             _left.Pic.Visible = false;
             _right.Pic.Visible = true;
-            if (_right.Img != null)
-            {
-                int w = Math.Max(80, (int)(availW * _zoom));
-                int h = Math.Max(100, w * _right.Img.Height / _right.Img.Width);
-                _right.Pic.SetBounds(Padding.Left, TopMargin, w, h);
-                _picBounds = new Rectangle(Padding.Left, TopMargin, w, h);
-            }
-            AutoScrollMargin = new Size(0, bottomPad);
-            return;
+            _right.Pic.SetBounds(x0, y0, w, h);
         }
 
-        _left.Pic.Visible = true;
-        _right.Pic.Visible = true;
-        int slotW = (availW - Gap) / 2;
-
-        if (_left.Img != null)
-        {
-            int w = Math.Max(80, (int)(slotW * _zoom));
-            int h = Math.Max(100, w * _left.Img.Height / _left.Img.Width);
-            _left.Pic.SetBounds(0, TopMargin, w, h);
-            _picBounds = new Rectangle(0, TopMargin, w, h);
-        }
-
-        if (_right.Img != null)
-        {
-            int w = Math.Max(80, (int)(slotW * _zoom));
-            int h = Math.Max(100, w * _right.Img.Height / _right.Img.Width);
-            int x = _left.Img != null && _left.Pic.Visible ? _left.Pic.Right + Gap : Padding.Left;
-            _right.Pic.SetBounds(x, TopMargin, w, h);
-            _picBounds = new Rectangle(x, TopMargin, w, h);
-        }
-
-        AutoScrollMargin = new Size(0, bottomPad);
+        AutoScrollMargin = new Size(0, BottomMargin);
         ClampScroll();
     }
-
-    private Rectangle _picBounds = Rectangle.Empty;
 
     private void ClampScroll()
     {
@@ -259,25 +289,18 @@ internal sealed class MushafView : Panel
 
     public void ScrollToTop()
     {
+        LayoutPages();
         AutoScrollPosition = new Point(0, 0);
         _left.Pic.Invalidate();
         _right.Pic.Invalidate();
     }
 
-    public int ScrollTopPixel
-    {
-        get => Math.Max(0, -AutoScrollPosition.Y);
-        set => AutoScrollPosition = new Point(Math.Max(0, -AutoScrollPosition.X), Math.Max(0, value));
-    }
-
-    public int TopMarginPx => TopMargin;
-
     protected override void OnMouseWheel(MouseEventArgs e)
     {
         if (ModifierKeys.HasFlag(Keys.Control))
         {
-            SetZoom(_zoom * (e.Delta > 0 ? 1.15f : 1f / 1.15f));
-            ZoomChanged?.Invoke();
+            if (e.Delta > 0) ZoomIn();
+            else ZoomOut();
             return;
         }
         base.OnMouseWheel(e);
@@ -291,13 +314,23 @@ internal sealed class MushafView : Panel
             if (box.Page > 0 && box.Hilites.TryGetValue(key, out var pt))
             {
                 float sc = box.Scale;
-                int yInBox = (int)(pt[1] * sc);
-                int yAbs = box.Pic.Top + yInBox;
-                AutoScrollPosition = new Point(0, Math.Max(0, yAbs - Height / 3));
+
+                int curTop = Math.Max(0, -AutoScrollPosition.Y);
+                int curLeft = Math.Max(0, -AutoScrollPosition.X);
+                int viewH = ClientSize.Height;
+
+                int yView = box.Pic.Top + (int)(pt[1] * sc);
+                if (yView >= 20 && yView <= viewH - 120) return;
+
+                int yAbs = yView + curTop;
+                int pageTopAbs = Math.Max(TopMargin, box.Pic.Top + curTop);
+                int target = Math.Max(pageTopAbs, yAbs - viewH / 3);
+
+                AutoScrollPosition = new Point(curLeft, Math.Max(0, target));
                 return;
             }
         }
-        ScrollToTop();
+        AutoScrollPosition = new Point(0, 0);
     }
 
     private PageBox? HitBox(PictureBox pic) => pic == _left.Pic ? _left : pic == _right.Pic ? _right : null;

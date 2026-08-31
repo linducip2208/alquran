@@ -37,6 +37,10 @@ internal sealed class AppSettings
     public int Volume { get; set; } = 80;
     public float Zoom { get; set; } = 1f;
     public bool SinglePage { get; set; } = false;
+    public string ZoomMode { get; set; } = "fit";
+    public float ManualZoom { get; set; } = 1f;
+    public int DetailPanelWidth { get; set; } = 320;
+    public bool DetailPanelCollapsed { get; set; } = false;
 
     private static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

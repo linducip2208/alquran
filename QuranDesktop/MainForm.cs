@@ -58,7 +58,6 @@ internal sealed class MainForm : Form
     private Button _btnDownload = new();
     private CheckBox _chkAutoNext = new();
     private CheckBox _chkPlayOnClick = new();
-    private CheckBox _chkTafsirPanel = new();
     private CheckBox _chkShowTrans = new();
     private CheckBox _chkInlineTafsir = new();
     private CheckBox _chkOverlay = new();
@@ -69,26 +68,28 @@ internal sealed class MainForm : Form
     private TrackBar _trackVolume = new();
     private TextBox _txtSearch = new();
     private Button _btnSearch = new();
-    private Label _lblStatus = new();
+    private ToolStripStatusLabel _lblStatus = new();
 
     private Controls.TextModeControl _textMode = new();
     private Controls.MushafView _mushafView = new();
     private Panel _mushafRight = new();
-    private FlowLayoutPanel _ayahStrip = new();
+    private TabControl _detailTabs = new();
     private RichTextBox _mushafInfo = new();
-    private Controls.HifzControl _hifz = new();
-    private Panel _tafsirPanel = new();
     private RichTextBox _tafsirText = new();
     private Label _tafsirHeader = new();
+    private FlowLayoutPanel _ayahStrip = new();
+    private Panel _ayahStripHost = new();
+    private SplitContainer _split = new();
+    private Button _btnToggleDetail = new();
+    private Controls.HifzControl _hifz = new();
     private Panel _center = new();
     private readonly ToolTip _stripTip = new();
-    private Panel _topContainer = new();
+    private FlowLayoutPanel _topContainer = new();
     private CheckBox _chkDark = new();
     private Button _btnSetting = new();
     private SettingsDialog? _settingsDlg;
     private Button _btnFeatures = new();
     private TrackBar _trackSpeed = new();
-    private Button _btnInspirasi = new();
     private Button _btnDownloadAll = new();
     private MiniPlayerForm? _mini;
     private NotifyIcon? _trayIcon;
@@ -104,6 +105,11 @@ internal sealed class MainForm : Form
     private Dictionary<string, string>? _prayerTimes;
     private DateTime _prayerFetchedDate;
     private readonly HashSet<string> _notifiedPrayers = new();
+    private StatusStrip _statusStrip = new();
+    private ToolStripStatusLabel _lblPageInfo = new();
+    private ToolStripStatusLabel _lblZoomInfo = new();
+    private bool _layoutReady;
+    private int _detailSavedWidth = 320;
 
     private const string AppVersion = "1.4.0";
 
@@ -129,7 +135,7 @@ internal sealed class MainForm : Form
         Text = "Quran Desktop — KSU Electronic Moshaf (WinForms)";
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(1250, 850);
-        MinimumSize = new Size(980, 660);
+        MinimumSize = new Size(1000, 640);
         DoubleBuffered = true;
 
         BuildUi();
@@ -145,8 +151,16 @@ internal sealed class MainForm : Form
         ProgramServices.ActiveTranslationKey = _settings.Translation;
         _mushafView.ZoomChanged += () =>
         {
-            _settings.Zoom = _mushafView.Zoom;
+            _settings.ZoomMode = _mushafView.ZoomMode switch
+            {
+                MushafZoomMode.FitWidth => "width",
+                MushafZoomMode.Actual => "actual",
+                MushafZoomMode.Manual => "manual",
+                _ => "fit",
+            };
+            _settings.ManualZoom = _mushafView.CurrentScale;
             _settings.Save();
+            RefreshZoomStatus();
         };
 
         InitTrayAndReminder();
@@ -217,48 +231,53 @@ internal sealed class MainForm : Form
 
     private void BuildUi()
     {
-        _topContainer = new Panel { Dock = DockStyle.Top, Height = 56 };
-        var mainFlow = MakeFlow();
-        _topContainer.Controls.Add(mainFlow);
+        _topContainer = MakeFlow();
+        var mainFlow = _topContainer;
 
-        _cmbMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 118, FlatStyle = FlatStyle.Flat };
+        _cmbMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 96, FlatStyle = FlatStyle.Flat };
         _cmbMode.Items.Add(new ComboItem("📖 Teks", "teks"));
         _cmbMode.Items.Add(new ComboItem("📕 Mushaf", "mushaf"));
         _cmbMode.Items.Add(new ComboItem("🧠 Hifz", "hifz"));
 
-        _cmbQaree = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 172, DropDownWidth = 240, FlatStyle = FlatStyle.Flat };
-        _cmbSurah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 172, DropDownWidth = 320, FlatStyle = FlatStyle.Flat };
-        _cmbAyah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 60, FlatStyle = FlatStyle.Flat };
-        _btnPlayPause = new Button { Text = "▶", Width = 40 };
-        _btnStop = new Button { Text = "■", Width = 34 };
-        _btnPrevAya = new Button { Text = "◀", Width = 30 };
-        _btnNextAya = new Button { Text = "▶", Width = 30 };
-        _txtSearch = new TextBox { Width = 96 };
-        _btnSearch = new Button { Text = "🔍", Width = 36 };
-        _btnInspirasi = new Button { Text = "✨", Width = 36 };
-        _btnDownloadAll = new Button { Text = "⬇ Unduh", Width = 80 };
-        _btnFeatures = new Button { Text = "Fitur ▾", Width = 66 };
-        _btnSetting = new Button { Text = "⚙", Width = 38 };
+        _cmbQaree = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 124, DropDownWidth = 280, FlatStyle = FlatStyle.Flat };
+        _cmbSurah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 148, DropDownWidth = 360, FlatStyle = FlatStyle.Flat };
+        _cmbAyah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 54, FlatStyle = FlatStyle.Flat };
+        _btnPlayPause = new Button { Text = "▶", Width = 36 };
+        _btnStop = new Button { Text = "■", Width = 30 };
+        _btnPrevAya = new Button { Text = "◀", Width = 28 };
+        _btnNextAya = new Button { Text = "▶", Width = 28 };
+        _txtSearch = new TextBox { Width = 110, PlaceholderText = "Cari surah/ayat/teks…" };
+        _btnSearch = new Button { Text = "🔍", Width = 34 };
+        _btnDownloadAll = new Button { Text = "⬇", Width = 32 };
+        _btnFeatures = new Button { Text = "Fitur ▾", Width = 62 };
+        _btnSetting = new Button { Text = "⚙", Width = 36 };
 
-        mainFlow.Controls.Add(new Label { Text = "📖", AutoSize = true, Padding = new Padding(0, 10, 0, 0) });
-        mainFlow.Controls.Add(_cmbMode);
-        mainFlow.Controls.Add(new Label { Text = "🎙", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
-        mainFlow.Controls.Add(_cmbQaree);
-        mainFlow.Controls.Add(new Label { Text = "Surah:", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
-        mainFlow.Controls.Add(_cmbSurah);
-        mainFlow.Controls.Add(new Label { Text = "Ayat:", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
-        mainFlow.Controls.Add(_cmbAyah);
-        mainFlow.Controls.Add(_btnPrevAya);
-        mainFlow.Controls.Add(_btnPlayPause);
-        mainFlow.Controls.Add(_btnNextAya);
-        mainFlow.Controls.Add(_btnStop);
-        mainFlow.Controls.Add(new Label { Text = "🔍", AutoSize = true, Padding = new Padding(6, 10, 0, 0) });
-        mainFlow.Controls.Add(_txtSearch);
-        mainFlow.Controls.Add(_btnSearch);
-        mainFlow.Controls.Add(_btnInspirasi);
-        mainFlow.Controls.Add(_btnDownloadAll);
-        mainFlow.Controls.Add(_btnFeatures);
-        mainFlow.Controls.Add(_btnSetting);
+        void Add(Control c, string? tip = null)
+        {
+            if (c.Margin == new Padding(3)) c.Margin = new Padding(2, 4, 2, 2);
+            mainFlow.Controls.Add(c);
+            if (tip != null) _stripTip.SetToolTip(c, tip);
+        }
+
+        Add(_cmbMode, "Mode tampilan");
+        Add(MakeSep());
+        Add(_cmbQaree, "Pilih qari");
+        Add(MakeSep());
+        Add(new Label { Text = "Surah:", AutoSize = true, Margin = new Padding(2, 8, 0, 0) });
+        Add(_cmbSurah);
+        Add(new Label { Text = "Ayat:", AutoSize = true, Margin = new Padding(2, 8, 0, 0) });
+        Add(_cmbAyah);
+        Add(_btnPrevAya, "Ayat sebelumnya");
+        Add(_btnPlayPause, "Putar / jeda (Spasi)");
+        Add(_btnNextAya, "Ayat berikutnya");
+        Add(_btnStop, "Stop");
+        Add(MakeSep());
+        Add(_txtSearch);
+        Add(_btnSearch, "Cari (Ctrl+F)");
+        Add(MakeSep());
+        Add(_btnDownloadAll, "Unduh semua: mushaf + teks + audio");
+        Add(_btnFeatures, "Menu fitur");
+        Add(_btnSetting, "Pengaturan");
 
         _cmbMosshaf = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 170, FlatStyle = FlatStyle.Flat };
         foreach (var m in MushafTypes.All) _cmbMosshaf.Items.Add(new ComboItem(m.Display, m));
@@ -269,7 +288,7 @@ internal sealed class MainForm : Form
         _btnPageNext = new Button { Text = "Hal ▶", Width = 56 };
         _btnZoomIn = new Button { Text = "Zoom +", Width = 62 };
         _btnZoomOut = new Button { Text = "Zoom −", Width = 62 };
-        _btnFit = new Button { Text = "100%", Width = 52 };
+        _btnFit = new Button { Text = "Fit", Width = 52 };
         _btnTop = new Button { Text = "⤒", Width = 40 };
         _chkSinglePage = new CheckBox { Text = "1 Halaman (scroll)", AutoSize = true };
         _btnDownload = new Button { Text = "⬇ Unduh Halaman", Width = 130 };
@@ -281,7 +300,6 @@ internal sealed class MainForm : Form
         _cmbRepeat = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90, FlatStyle = FlatStyle.Flat };
         _chkAutoNext = new CheckBox { Text = "Lanjut otomatis", AutoSize = true };
         _chkPlayOnClick = new CheckBox { Text = "Klik ayat = putar", AutoSize = true };
-        _chkTafsirPanel = new CheckBox { Text = "Panel tafsir", AutoSize = true };
         _chkShowTrans = new CheckBox { Text = "Tampilkan arti", AutoSize = true };
         _chkInlineTafsir = new CheckBox { Text = "Tafsir inline", AutoSize = true };
         _chkTeacher = new CheckBox { Text = "Mode guru", AutoSize = true };
@@ -295,39 +313,21 @@ internal sealed class MainForm : Form
         _center = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(244, 244, 240) };
 
         _textMode = new Controls.TextModeControl { Dock = DockStyle.Fill };
+        _hifz = new Controls.HifzControl { Dock = DockStyle.Fill };
 
         _mushafView = new Controls.MushafView { Dock = DockStyle.Fill };
-        _mushafRight = new Panel { Dock = DockStyle.Right, Width = 330, BackColor = Color.FromArgb(250, 250, 247), Padding = new Padding(6) };
-        _ayahStrip = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Top,
-            Height = 110,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true,
-            AutoScroll = true,
-            BackColor = Color.FromArgb(240, 240, 235),
-        };
+
         _mushafInfo = new RichTextBox
         {
             Dock = DockStyle.Fill,
             ReadOnly = true,
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             BackColor = Color.White,
-            Font = new Font("Segoe UI", 10.5f),
+            Font = new Font("Segoe UI", 11f),
         };
-        _mushafRight.Controls.Add(_mushafInfo);
-        _mushafRight.Controls.Add(_ayahStrip);
 
-        _hifz = new Controls.HifzControl { Dock = DockStyle.Fill };
-
-        _center.Controls.Add(_textMode);
-        _center.Controls.Add(_mushafView);
-        _center.Controls.Add(_mushafRight);
-        _center.Controls.Add(_hifz);
-        _mushafRight.BringToFront();
-        _mushafView.BringToFront();
-
-        _tafsirPanel = new Panel { Dock = DockStyle.Bottom, Height = 190, BackColor = Color.White, Padding = new Padding(4) };
+        _tafsirHeader = new Label { Text = "Tafsir ayat terpilih:", AutoSize = true, Padding = new Padding(4, 8, 0, 0) };
+        _btnOpenTafsir = new Button { Text = "Buka di browser ↗", Width = 130 };
         var tafsirTop = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
@@ -337,10 +337,9 @@ internal sealed class MainForm : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             BackColor = Color.FromArgb(240, 240, 235),
         };
-        _tafsirHeader = new Label { Text = "Tafsir ayat terpilih:", AutoSize = true, Padding = new Padding(4, 8, 0, 0) };
         tafsirTop.Controls.Add(_tafsirHeader);
-        _btnOpenTafsir = new Button { Text = "Buka di browser ↗", Width = 130 };
         tafsirTop.Controls.Add(_btnOpenTafsir);
+
         _tafsirText = new RichTextBox
         {
             Dock = DockStyle.Fill,
@@ -349,27 +348,141 @@ internal sealed class MainForm : Form
             BackColor = Color.White,
             Font = new Font("Segoe UI", 11f),
         };
-        _tafsirPanel.Controls.Add(_tafsirText);
-        _tafsirPanel.Controls.Add(tafsirTop);
-        _tafsirText.BringToFront();
 
-        _lblStatus = new Label
+        _ayahStrip = new FlowLayoutPanel
         {
-            Dock = DockStyle.Bottom,
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            AutoScroll = true,
+            BackColor = Color.FromArgb(240, 240, 235),
+        };
+        var ayahStripHint = new Label
+        {
+            Dock = DockStyle.Top,
             AutoSize = true,
-            Padding = new Padding(10, 5, 10, 5),
-            Text = "Siap",
-            BackColor = Color.FromArgb(45, 45, 48),
-            ForeColor = Color.Gainsboro,
-            Font = new Font("Segoe UI", 9.5f),
+            Text = "Ayat pada halaman ini — klik nomor untuk lompat:",
+            Padding = new Padding(6, 6, 6, 2),
+        };
+        _ayahStripHost = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(240, 240, 235) };
+        _ayahStripHost.Controls.Add(_ayahStrip);
+        _ayahStripHost.Controls.Add(ayahStripHint);
+
+        _detailTabs = new TabControl { Dock = DockStyle.Fill };
+        var tabTerjemahan = new TabPage("Terjemahan");
+        var tabTafsir = new TabPage("Tafsir");
+        var tabAyat = new TabPage("Ayat");
+        tabTerjemahan.Controls.Add(_mushafInfo);
+        tabTafsir.Controls.Add(_tafsirText);
+        tabTafsir.Controls.Add(tafsirTop);
+        tabAyat.Controls.Add(_ayahStripHost);
+        _detailTabs.TabPages.AddRange(new[] { tabTerjemahan, tabTafsir, tabAyat });
+
+        _mushafRight = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(250, 250, 247), Padding = new Padding(6) };
+        _mushafRight.Controls.Add(_detailTabs);
+
+        _split = new SplitContainer
+        {
+            Dock = DockStyle.Fill,
+            Orientation = Orientation.Vertical,
+            FixedPanel = FixedPanel.Panel2,
+            SplitterWidth = 6,
+            BackColor = Color.FromArgb(205, 205, 200),
+        };
+        _split.Panel1.BackColor = Color.FromArgb(40, 40, 42);
+        _split.Panel1.Controls.Add(_mushafView);
+        _split.Panel2.Controls.Add(_mushafRight);
+
+        _btnToggleDetail = new Button
+        {
+            Dock = DockStyle.Right,
+            Width = 18,
+            Text = "◀",
+            FlatStyle = FlatStyle.Flat,
+        };
+        _btnToggleDetail.FlatAppearance.BorderSize = 0;
+        _stripTip.SetToolTip(_btnToggleDetail, "Sembunyikan panel info");
+        _btnToggleDetail.Click += (_, _) => SetDetailPanelCollapsed(!_split.Panel2Collapsed);
+        _split.SplitterMoved += (_, _) =>
+        {
+            if (!_layoutReady || _split.Panel2Collapsed) return;
+            _detailSavedWidth = _split.Width - _split.SplitterDistance - _split.SplitterWidth;
+        };
+        _split.SizeChanged += (_, _) =>
+        {
+            if (!_layoutReady && _split.Width > 500) ApplyDetailPanelPrefs();
         };
 
+        _center.Controls.Add(_split);
+        _center.Controls.Add(_btnToggleDetail);
+        _center.Controls.Add(_textMode);
+        _center.Controls.Add(_hifz);
+
+        _lblStatus = new ToolStripStatusLabel
+        {
+            Spring = true,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Text = "Siap",
+            ForeColor = Color.Gainsboro,
+        };
+        _lblPageInfo = new ToolStripStatusLabel { ForeColor = Color.Gainsboro };
+        _lblZoomInfo = new ToolStripStatusLabel { ForeColor = Color.Gainsboro };
+        _statusStrip = new StatusStrip
+        {
+            Dock = DockStyle.Bottom,
+            SizingGrip = false,
+            BackColor = Color.FromArgb(45, 45, 48),
+        };
+        _statusStrip.Items.AddRange(new ToolStripItem[] { _lblStatus, _lblPageInfo, _lblZoomInfo });
+
         Controls.Add(_center);
-        Controls.Add(_tafsirPanel);
-        Controls.Add(_lblStatus);
+        Controls.Add(_statusStrip);
         Controls.Add(_topContainer);
-        _topContainer.BringToFront();
-        _lblStatus.BringToFront();
+    }
+
+    private static Label MakeSep() => new()
+    {
+        Text = "│",
+        AutoSize = true,
+        ForeColor = Color.FromArgb(160, 160, 160),
+        Margin = new Padding(3, 7, 3, 0),
+        Font = new Font("Segoe UI", 11f),
+    };
+
+    private void ApplyDetailPanelPrefs()
+    {
+        try
+        {
+            _split.Panel2MinSize = 240;
+            int maxDetail = Math.Max(_split.Panel2MinSize, Math.Min(520, _split.Width / 2));
+            int want = Math.Clamp(_settings.DetailPanelWidth, _split.Panel2MinSize, maxDetail);
+            int dist = Math.Max(120, _split.Width - _split.SplitterWidth - want);
+            _split.SplitterDistance = Math.Min(dist, _split.Width - _split.Panel2MinSize - _split.SplitterWidth);
+            _split.Panel1MinSize = 120;
+            _split.Panel2Collapsed = _settings.DetailPanelCollapsed;
+            _btnToggleDetail.Text = _split.Panel2Collapsed ? "◀" : "▶";
+            _detailSavedWidth = want;
+        }
+        catch
+        {
+        }
+        _layoutReady = true;
+    }
+
+    private void SetDetailPanelCollapsed(bool collapsed)
+    {
+        try
+        {
+            _split.Panel2Collapsed = collapsed;
+        }
+        catch
+        {
+        }
+        _btnToggleDetail.Text = collapsed ? "◀" : "▶";
+        _stripTip.SetToolTip(_btnToggleDetail, collapsed ? "Tampilkan panel info" : "Sembunyikan panel info");
+        _settings.DetailPanelCollapsed = collapsed;
+        if (!_layoutReady) return;
+        _settings.Save();
     }
 
     private static FlowLayoutPanel MakeFlow() => new()
@@ -379,7 +492,7 @@ internal sealed class MainForm : Form
         WrapContents = false,
         AutoSize = true,
         AutoSizeMode = AutoSizeMode.GrowAndShrink,
-        Padding = new Padding(8, 4, 8, 0),
+        Padding = new Padding(8, 4, 8, 4),
     };
 
     private void ApplySettingsToUi()
@@ -439,7 +552,6 @@ internal sealed class MainForm : Form
         _chkPlayOnClick.Checked = _settings.PlayOnClick;
         _chkSinglePage.Checked = _settings.SinglePage;
         _mushafView.SinglePage = _settings.SinglePage;
-        _chkTafsirPanel.Checked = _settings.ShowTafsirPanel;
         _chkShowTrans.Checked = _settings.ShowTranslation;
         _chkInlineTafsir.Checked = _settings.ShowInlineTafsir;
         _chkOverlay.Checked = _settings.ShowMushafOverlay;
@@ -583,9 +695,23 @@ internal sealed class MainForm : Form
 
         _btnPagePrev.Click += (_, _) => StepPage(-1);
         _btnPageNext.Click += (_, _) => StepPage(1);
-        _btnZoomIn.Click += (_, _) => { _mushafView.SetZoom(_mushafView.Zoom * 1.2f); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
-        _btnZoomOut.Click += (_, _) => { _mushafView.SetZoom(_mushafView.Zoom / 1.2f); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
-        _btnFit.Click += (_, _) => { _mushafView.FitToScreen(); _settings.Zoom = _mushafView.Zoom; _settings.Save(); };
+        _btnZoomIn.Click += (_, _) => _mushafView.ZoomIn();
+        _btnZoomOut.Click += (_, _) => _mushafView.ZoomOut();
+        _btnFit.Click += (_, _) =>
+        {
+            _mushafView.SetZoomMode(_mushafView.ZoomMode switch
+            {
+                MushafZoomMode.FitSpread => MushafZoomMode.FitWidth,
+                MushafZoomMode.FitWidth => MushafZoomMode.Actual,
+                _ => MushafZoomMode.FitSpread,
+            });
+            _btnFit.Text = _mushafView.ZoomMode switch
+            {
+                MushafZoomMode.FitWidth => "Lebar",
+                MushafZoomMode.Actual => "100%",
+                _ => "Fit",
+            };
+        };
         _btnTop.Click += (_, _) => _mushafView.ScrollToTop();
         _chkSinglePage.CheckedChanged += (_, _) =>
         {
@@ -697,12 +823,6 @@ internal sealed class MainForm : Form
 
         _chkAutoNext.CheckedChanged += (_, _) => { _settings.AutoNext = _chkAutoNext.Checked; _settings.Save(); };
         _chkPlayOnClick.CheckedChanged += (_, _) => { _settings.PlayOnClick = _chkPlayOnClick.Checked; _settings.Save(); };
-        _chkTafsirPanel.CheckedChanged += (_, _) =>
-        {
-            _settings.ShowTafsirPanel = _chkTafsirPanel.Checked;
-            _settings.Save();
-            _tafsirPanel.Visible = _chkTafsirPanel.Checked;
-        };
 
         _chkShowTrans.CheckedChanged += (_, _) =>
         {
@@ -712,6 +832,10 @@ internal sealed class MainForm : Form
             if (CurrentMode == "mushaf" && _mushafView.CurrentPage > 0)
             {
                 UpdateMushafInfo(_curSurah, _curAyah);
+            }
+            if (CurrentMode == "mushaf")
+            {
+                SetDetailPanelCollapsed(!_chkShowTrans.Checked);
             }
         };
 
@@ -759,13 +883,6 @@ internal sealed class MainForm : Form
         _numRangeFrom.ValueChanged += (_, _) =>
         {
             if (_numRangeFrom.Value > _numRangeTo.Value) _numRangeTo.Value = _numRangeFrom.Value;
-        };
-
-        _btnInspirasi.Click += (_, _) =>
-        {
-            using var dlg = new InspirasiDialog();
-            dlg.GotoRequested += (s, a) => _ = GotoAyahAsync(s, a);
-            dlg.ShowDialog(this);
         };
 
         _btnDownloadAll.Click += (_, _) =>
@@ -1105,6 +1222,8 @@ internal sealed class MainForm : Form
             _mini?.Close();
             _trayIcon?.Dispose();
             TtsService.Dispose();
+            _settings.DetailPanelWidth = _detailSavedWidth;
+            _settings.DetailPanelCollapsed = _split.Panel2Collapsed;
             _settings.Save();
         };
 
@@ -1122,7 +1241,6 @@ internal sealed class MainForm : Form
                     ("Tampilkan", new (string?, Control)[]
                     {
                         (null, _chkShowTrans),
-                        (null, _chkTafsirPanel),
                         (null, _chkInlineTafsir),
                         (null, _chkAutoNext),
                         (null, _chkPlayOnClick),
@@ -1174,10 +1292,9 @@ internal sealed class MainForm : Form
     }
     private void SwitchMode(string mode)
     {
-        _topContainer.Height = mode == "mushaf" ? 92 : 56;
+        _split.Visible = mode == "mushaf";
+        _btnToggleDetail.Visible = mode == "mushaf";
         _textMode.Visible = mode == "teks";
-        _mushafView.Visible = mode == "mushaf";
-        _mushafRight.Visible = mode == "mushaf" && _chkShowTrans.Checked;
         _hifz.Visible = mode == "hifz";
 
         if (mode == "teks")
@@ -1329,17 +1446,11 @@ internal sealed class MainForm : Form
         try
         {
             await _mushafView.LoadAsync(page, mt.Key, ProgramServices.Http, CancellationToken.None);
-            if (_settings.Zoom >= 0.9f && _settings.Zoom <= 1.1f)
-            {
-                _mushafView.FitToScreen();
-            }
-            else
-            {
-                _mushafView.SetZoom(_settings.Zoom);
-            }
+            ApplySavedZoom();
 
             var (rightPage, leftPage) = _mushafView.SpreadPages;
             int pageCount = QuranData.PageCount(mt.PageKey);
+            UpdatePageInfo(rightPage, leftPage, pageCount, mt.Display);
             foreach (var p in new[] { rightPage, leftPage })
             {
                 if (p < 1 || p > pageCount) continue;
@@ -1366,13 +1477,45 @@ internal sealed class MainForm : Form
                 UpdateMushafInfo(selectSurah.Value, selectAyah.Value);
             }
 
-            ShowStatus($"Hal {page} — layar {rightPage}–{leftPage} dari {pageCount} • {mt.Display}");
+            string range = leftPage > 0 ? $"{leftPage}–{rightPage}" : $"{rightPage}";
+            ShowStatus($"Halaman {range} / {pageCount} • {mt.Display}");
         }
         catch (Exception ex)
         {
             Program.Log(ex);
             ShowStatus("Gagal memuat mushaf: " + ex.Message, error: true);
         }
+    }
+
+    private void ApplySavedZoom()
+    {
+        switch (_settings.ZoomMode)
+        {
+            case "width":
+                _mushafView.FitWidth();
+                break;
+            case "actual":
+                _mushafView.ActualSize();
+                break;
+            case "manual":
+                _mushafView.SetManualZoom(_settings.ManualZoom);
+                break;
+            default:
+                _mushafView.FitToScreen();
+                break;
+        }
+    }
+
+    private void UpdatePageInfo(int rightPage, int leftPage, int pageCount, string mushafName)
+    {
+        string range = leftPage > 0 ? $"{leftPage}–{rightPage}" : $"{rightPage}";
+        _lblPageInfo.Text = $"Hal {range} / {pageCount} • {mushafName}";
+        RefreshZoomStatus();
+    }
+
+    private void RefreshZoomStatus()
+    {
+        _lblZoomInfo.Text = _mushafView.ZoomLabel;
     }
 
     private void BuildAyahStrip(IEnumerable<int> pages)
@@ -1409,8 +1552,11 @@ internal sealed class MainForm : Form
         var info = SurahList.Get(surah);
         _mushafInfo.Clear();
 
-        _mushafInfo.SelectionFont = new Font("Segoe UI", 11f, FontStyle.Bold);
-        _mushafInfo.AppendText($"Surah {surah}. {info.EnglishName} ({info.ArabicName}) — Ayat {ayah}\n\n");
+        _mushafInfo.SelectionFont = new Font("Segoe UI", 12f, FontStyle.Bold);
+        _mushafInfo.AppendText($"{info.EnglishName} — {info.ArabicName}\n");
+        _mushafInfo.SelectionFont = new Font("Segoe UI", 10f, FontStyle.Bold);
+        _mushafInfo.SelectionColor = Color.FromArgb(120, 110, 60);
+        _mushafInfo.AppendText($"Ayat {ayah}\n\n");
 
         try
         {
@@ -1868,12 +2014,19 @@ internal sealed class MainForm : Form
         _topContainer.BackColor = d ? Color.FromArgb(30, 30, 34) : SystemColors.Control;
         _center.BackColor = d ? Color.FromArgb(38, 38, 42) : Color.FromArgb(244, 244, 240);
         _textMode.ApplyDark(d);
-        _tafsirPanel.BackColor = d ? Color.FromArgb(36, 36, 40) : Color.White;
-        _tafsirText.BackColor = d ? Color.FromArgb(36, 36, 40) : Color.White;
-        _tafsirText.ForeColor = d ? Color.Gainsboro : Color.Black;
+        _split.BackColor = d ? Color.FromArgb(60, 60, 66) : Color.FromArgb(205, 205, 200);
+        _split.Panel1.BackColor = Color.FromArgb(40, 40, 42);
         _mushafRight.BackColor = d ? Color.FromArgb(42, 42, 46) : Color.FromArgb(250, 250, 247);
         _mushafInfo.BackColor = d ? Color.FromArgb(42, 42, 46) : Color.White;
         _mushafInfo.ForeColor = d ? Color.Gainsboro : Color.Black;
+        _tafsirText.BackColor = d ? Color.FromArgb(42, 42, 46) : Color.White;
+        _tafsirText.ForeColor = d ? Color.Gainsboro : Color.Black;
+        foreach (TabPage tp in _detailTabs.TabPages)
+        {
+            tp.BackColor = d ? Color.FromArgb(42, 42, 46) : Color.FromArgb(250, 250, 247);
+            tp.ForeColor = d ? Color.Gainsboro : Color.Black;
+        }
+        _statusStrip.BackColor = d ? Color.FromArgb(28, 28, 32) : Color.FromArgb(45, 45, 48);
     }
 
     private void ToggleMiniPlayer()
@@ -1911,10 +2064,9 @@ internal sealed class MainForm : Form
     {
         _focusMode = on;
         _topContainer.Visible = !on;
-        _tafsirPanel.Visible = !on && _chkTafsirPanel.Checked;
-        _lblStatus.Visible = !on;
+        _statusStrip.Visible = !on;
         Text = on
-            ? "Quran Desktop — Mode Fokus (tekan Esc untuk keluar)"
+            ? "Quran Desktop — Mode Fokus (Esc/F11 = keluar)"
             : "Quran Desktop — KSU Electronic Moshaf (WinForms)";
         if (on) ShowStatus("Mode fokus aktif");
     }
@@ -2026,6 +2178,21 @@ internal sealed class MainForm : Form
                     return true;
                 case Keys.Escape when _focusMode:
                     SetFocusMode(false);
+                    return true;
+                case Keys.F11:
+                    SetFocusMode(!_focusMode);
+                    return true;
+                case Keys.Control | Keys.Add:
+                case Keys.Control | Keys.Oemplus:
+                    _mushafView.ZoomIn();
+                    return true;
+                case Keys.Control | Keys.Subtract:
+                case Keys.Control | Keys.OemMinus:
+                    _mushafView.ZoomOut();
+                    return true;
+                case Keys.Control | Keys.D0:
+                case Keys.Control | Keys.NumPad0:
+                    _mushafView.FitToScreen();
                     return true;
                 case Keys.Home when CurrentMode == "mushaf":
                     _mushafView.ScrollToTop();
