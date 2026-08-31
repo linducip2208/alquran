@@ -83,8 +83,10 @@ internal sealed class MainForm : Form
     private Panel _center = new();
     private readonly ToolTip _stripTip = new();
     private Panel _topContainer = new();
-    private Button _btnStar = new();
-    private Button _btnCard = new();
+    private CheckBox _chkDark = new();
+    private Button _btnSetting = new();
+    private FlowLayoutPanel _ctxFlow = new();
+    private SettingsDialog? _settingsDlg;
     private Button _btnFeatures = new();
     private TrackBar _trackSpeed = new();
     private Button _btnInspirasi = new();
@@ -216,114 +218,100 @@ internal sealed class MainForm : Form
 
     private void BuildUi()
     {
-        _topContainer = new Panel { Dock = DockStyle.Top, Height = 156 };
+        _topContainer = new Panel { Dock = DockStyle.Top, Height = 92 };
+        _ctxFlow = MakeFlow();
+        _ctxFlow.Height = 40;
+        var mainFlow = MakeFlow();
+        mainFlow.Height = 44;
+        _topContainer.Controls.Add(_ctxFlow);
+        _topContainer.Controls.Add(mainFlow);
+        _ctxFlow.BringToFront();
 
-        var flow1 = MakeFlow();
-        var flow2 = MakeFlow();
-        var flow3 = MakeFlow();
-        var flow4 = MakeFlow();
-        _topContainer.Controls.Add(flow4);
-        _topContainer.Controls.Add(flow3);
-        _topContainer.Controls.Add(flow2);
-        _topContainer.Controls.Add(flow1);
-        flow1.BringToFront();
-        flow2.BringToFront();
-        flow3.BringToFront();
+        _cmbMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 140, FlatStyle = FlatStyle.Flat };
+        _cmbMode.Items.Add(new ComboItem("📖 Teks", "teks"));
+        _cmbMode.Items.Add(new ComboItem("📕 Mushaf", "mushaf"));
+        _cmbMode.Items.Add(new ComboItem("🧠 Hifz", "hifz"));
 
-        _cmbMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150, FlatStyle = FlatStyle.Flat };
-        _cmbMode.Items.Add(new ComboItem("Teks & Terjemahan", "teks"));
-        _cmbMode.Items.Add(new ComboItem("Mushaf (Halaman)", "mushaf"));
-        _cmbMode.Items.Add(new ComboItem("Tes Hafalan (Hifz)", "hifz"));
+        _cmbQaree = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, DropDownWidth = 240, FlatStyle = FlatStyle.Flat };
+        _cmbSurah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210, DropDownWidth = 320, FlatStyle = FlatStyle.Flat };
+        _cmbAyah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 64, FlatStyle = FlatStyle.Flat };
+        _btnPlayPause = new Button { Text = "▶", Width = 44 };
+        _btnStop = new Button { Text = "■", Width = 38 };
+        _btnPrevAya = new Button { Text = "◀", Width = 34 };
+        _btnNextAya = new Button { Text = "▶", Width = 34 };
+        _txtSearch = new TextBox { Width = 130 };
+        _btnSearch = new Button { Text = "🔍", Width = 40 };
+        _btnInspirasi = new Button { Text = "✨", Width = 40 };
+        _btnDownloadAll = new Button { Text = "⬇ Unduh", Width = 84 };
+        _btnFeatures = new Button { Text = "Fitur ▾", Width = 70 };
+        _btnSetting = new Button { Text = "⚙ Pengaturan", Width = 104 };
 
-        _cmbMosshaf = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160, FlatStyle = FlatStyle.Flat };
+        mainFlow.Controls.Add(new Label { Text = "📖", AutoSize = true, Padding = new Padding(0, 10, 0, 0) });
+        mainFlow.Controls.Add(_cmbMode);
+        mainFlow.Controls.Add(new Label { Text = "🎙", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
+        mainFlow.Controls.Add(_cmbQaree);
+        mainFlow.Controls.Add(new Label { Text = "Surah:", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
+        mainFlow.Controls.Add(_cmbSurah);
+        mainFlow.Controls.Add(new Label { Text = "Ayat:", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
+        mainFlow.Controls.Add(_cmbAyah);
+        mainFlow.Controls.Add(_btnPrevAya);
+        mainFlow.Controls.Add(_btnPlayPause);
+        mainFlow.Controls.Add(_btnNextAya);
+        mainFlow.Controls.Add(_btnStop);
+        mainFlow.Controls.Add(new Label { Text = "🔍", AutoSize = true, Padding = new Padding(6, 10, 0, 0) });
+        mainFlow.Controls.Add(_txtSearch);
+        mainFlow.Controls.Add(_btnSearch);
+        mainFlow.Controls.Add(_btnInspirasi);
+        mainFlow.Controls.Add(_btnDownloadAll);
+        mainFlow.Controls.Add(_btnFeatures);
+        mainFlow.Controls.Add(_btnSetting);
+
+        _cmbMosshaf = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, FlatStyle = FlatStyle.Flat };
         foreach (var m in MushafTypes.All) _cmbMosshaf.Items.Add(new ComboItem(m.Display, m));
 
-        _cmbSurah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 280, DropDownWidth = 320, FlatStyle = FlatStyle.Flat };
-        _cmbAyah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 72, FlatStyle = FlatStyle.Flat };
         _cmbPage = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90, FlatStyle = FlatStyle.Flat };
         _cmbJuz = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 100, FlatStyle = FlatStyle.Flat };
         _btnPagePrev = new Button { Text = "◀ Hal", Width = 56 };
         _btnPageNext = new Button { Text = "Hal ▶", Width = 56 };
-        _btnZoomIn = new Button { Text = "Zoom +", Width = 64 };
-        _btnZoomOut = new Button { Text = "Zoom −", Width = 64 };
+        _btnZoomIn = new Button { Text = "Zoom +", Width = 62 };
+        _btnZoomOut = new Button { Text = "Zoom −", Width = 62 };
         _btnFit = new Button { Text = "100%", Width = 52 };
         _btnTop = new Button { Text = "⤒", Width = 40 };
         _chkSinglePage = new CheckBox { Text = "1 Hal.", AutoSize = true, Padding = new Padding(2, 6, 0, 0) };
-        _btnDownload = new Button { Text = "⬇ Unduh", Width = 80 };
+        _btnDownload = new Button { Text = "⬇ Halaman", Width = 90 };
+        _chkOverlay = new CheckBox { Text = "Arti di mushaf", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
 
-        flow1.Controls.Add(new Label { Text = "Mode:", AutoSize = true, Padding = new Padding(0, 8, 0, 0) });
-        flow1.Controls.Add(_cmbMode);
-        flow1.Controls.Add(_cmbMosshaf);
-        flow1.Controls.Add(new Label { Text = "Surah:", AutoSize = true, Padding = new Padding(6, 8, 0, 0) });
-        flow1.Controls.Add(_cmbSurah);
-        flow1.Controls.Add(new Label { Text = "Ayat:", AutoSize = true, Padding = new Padding(4, 8, 0, 0) });
-        flow1.Controls.Add(_cmbAyah);
-        flow1.Controls.Add(_btnPagePrev);
-        flow1.Controls.Add(_cmbPage);
-        flow1.Controls.Add(_btnPageNext);
-        flow1.Controls.Add(new Label { Text = "Juz:", AutoSize = true, Padding = new Padding(4, 8, 0, 0) });
-        flow1.Controls.Add(_cmbJuz);
-        _chkOverlay = new CheckBox { Text = "Arti di mushaf", AutoSize = true, Padding = new Padding(6, 6, 0, 0) };
-        flow1.Controls.Add(_btnZoomIn);
-        flow1.Controls.Add(_btnZoomOut);
-        flow1.Controls.Add(_btnFit);
-        flow1.Controls.Add(_btnTop);
-        flow1.Controls.Add(_chkSinglePage);
-        flow1.Controls.Add(_btnDownload);
-        flow1.Controls.Add(_chkOverlay);
+        _ctxFlow.Controls.Add(_btnPagePrev);
+        _ctxFlow.Controls.Add(_cmbMosshaf);
+        _ctxFlow.Controls.Add(_cmbPage);
+        _ctxFlow.Controls.Add(_btnPageNext);
+        _ctxFlow.Controls.Add(new Label { Text = "Juz:", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
+        _ctxFlow.Controls.Add(_cmbJuz);
+        _ctxFlow.Controls.Add(_btnZoomIn);
+        _ctxFlow.Controls.Add(_btnZoomOut);
+        _ctxFlow.Controls.Add(_btnFit);
+        _ctxFlow.Controls.Add(_btnTop);
+        _ctxFlow.Controls.Add(_chkSinglePage);
+        _ctxFlow.Controls.Add(_btnDownload);
+        _ctxFlow.Controls.Add(_chkOverlay);
+        _ctxFlow.Visible = false;
 
-        _cmbQaree = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240, DropDownWidth = 270, FlatStyle = FlatStyle.Flat };
         _cmbTrans = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220, DropDownWidth = 250, FlatStyle = FlatStyle.Flat };
         _cmbPb = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130, FlatStyle = FlatStyle.Flat };
         _cmbTafsir = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 190, DropDownWidth = 220, FlatStyle = FlatStyle.Flat };
         _cmbRepeat = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90, FlatStyle = FlatStyle.Flat };
-
-        flow2.Controls.Add(new Label { Text = "Qari:", AutoSize = true, Padding = new Padding(0, 8, 0, 0) });
-        flow2.Controls.Add(_cmbQaree);
-        flow2.Controls.Add(new Label { Text = "Terjemahan:", AutoSize = true, Padding = new Padding(6, 8, 0, 0) });
-        flow2.Controls.Add(_cmbTrans);
-        flow2.Controls.Add(new Label { Text = "Talaqaa (voice):", AutoSize = true, Padding = new Padding(6, 8, 0, 0) });
-        flow2.Controls.Add(_cmbPb);
-        flow2.Controls.Add(new Label { Text = "Tafsir:", AutoSize = true, Padding = new Padding(6, 8, 0, 0) });
-        flow2.Controls.Add(_cmbTafsir);
-        flow2.Controls.Add(new Label { Text = "Ulangi:", AutoSize = true, Padding = new Padding(6, 8, 0, 0) });
-        flow2.Controls.Add(_cmbRepeat);
-
-        _btnPlayPause = new Button { Text = "▶ Play", Width = 90 };
-        _btnStop = new Button { Text = "■ Stop", Width = 70 };
-        _btnPrevAya = new Button { Text = "◀ Ayat", Width = 64 };
-        _btnNextAya = new Button { Text = "Ayat ▶", Width = 64 };
-        _chkAutoNext = new CheckBox { Text = "Lanjut otomatis", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
-        _chkPlayOnClick = new CheckBox { Text = "Klik ayat = putar", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
-        _chkTafsirPanel = new CheckBox { Text = "Panel tafsir", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
-        _chkShowTrans = new CheckBox { Text = "Arti", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
-        _chkInlineTafsir = new CheckBox { Text = "Tafsir inline", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
-        _chkTeacher = new CheckBox { Text = "Mode guru", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
-        _chkRepeatRange = new CheckBox { Text = "Ulang rentang", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
+        _chkAutoNext = new CheckBox { Text = "Lanjut otomatis", AutoSize = true };
+        _chkPlayOnClick = new CheckBox { Text = "Klik ayat = putar", AutoSize = true };
+        _chkTafsirPanel = new CheckBox { Text = "Panel tafsir", AutoSize = true };
+        _chkShowTrans = new CheckBox { Text = "Tampilkan arti", AutoSize = true };
+        _chkInlineTafsir = new CheckBox { Text = "Tafsir inline", AutoSize = true };
+        _chkTeacher = new CheckBox { Text = "Mode guru", AutoSize = true };
+        _chkRepeatRange = new CheckBox { Text = "Ulang rentang ayat", AutoSize = true };
         _numRangeFrom = new NumericUpDown { Minimum = 1, Maximum = 286, Value = 1, Width = 58 };
         _numRangeTo = new NumericUpDown { Minimum = 1, Maximum = 286, Value = 5, Width = 58 };
-        _trackVolume = new TrackBar { Minimum = 0, Maximum = 100, Width = 110, TickStyle = TickStyle.None };
-        _txtSearch = new TextBox { Width = 170 };
-        _btnSearch = new Button { Text = "🔍 Cari", Width = 76 };
-
-        flow3.Controls.Add(_btnPlayPause);
-        flow3.Controls.Add(_btnStop);
-        flow3.Controls.Add(_btnPrevAya);
-        flow3.Controls.Add(_btnNextAya);
-        flow3.Controls.Add(_chkAutoNext);
-        flow3.Controls.Add(_chkPlayOnClick);
-        flow3.Controls.Add(_chkShowTrans);
-        flow3.Controls.Add(_chkInlineTafsir);
-        flow3.Controls.Add(_chkTeacher);
-        flow3.Controls.Add(_chkRepeatRange);
-        flow3.Controls.Add(_numRangeFrom);
-        flow3.Controls.Add(new Label { Text = "–", AutoSize = true, Padding = new Padding(0, 8, 0, 0) });
-        flow3.Controls.Add(_numRangeTo);
-        flow3.Controls.Add(new Label { Text = "Vol:", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
-        flow3.Controls.Add(_trackVolume);
-        flow3.Controls.Add(new Label { Text = "Cari:", AutoSize = true, Padding = new Padding(8, 8, 0, 0) });
-        flow3.Controls.Add(_txtSearch);
-        flow3.Controls.Add(_btnSearch);
+        _trackVolume = new TrackBar { Minimum = 0, Maximum = 100, Width = 130, TickStyle = TickStyle.None };
+        _trackSpeed = new TrackBar { Minimum = 5, Maximum = 20, TickFrequency = 5, Width = 130, TickStyle = TickStyle.None };
+        _chkDark = new CheckBox { Text = "Mode gelap", AutoSize = true };
 
         _center = new Panel { Dock = DockStyle.Fill, BackColor = Color.FromArgb(244, 244, 240) };
 
@@ -397,23 +385,10 @@ internal sealed class MainForm : Form
             Font = new Font("Segoe UI", 9.5f),
         };
 
-        _btnStar = new Button { Text = "★ Bookmark", Width = 96 };
-        _btnCard = new Button { Text = "Kartu Ayat", Width = 86 };
-        _btnInspirasi = new Button { Text = "✨ Inspirasi", Width = 92 };
-        _btnDownloadAll = new Button { Text = "⬇ Unduh Semua", Width = 118 };
-        _btnFeatures = new Button { Text = "Fitur Lainnya", Width = 104 };
-        _trackSpeed = new TrackBar { Minimum = 5, Maximum = 20, TickFrequency = 5, Width = 110, TickStyle = TickStyle.None };
-
-        var lblSpeedVal = new Label { Text = "1.0×", AutoSize = true, Padding = new Padding(0, 10, 0, 0) };
-        flow4.Controls.Add(_btnStar);
-        flow4.Controls.Add(_btnCard);
-        flow4.Controls.Add(_btnInspirasi);
-        flow4.Controls.Add(_btnDownloadAll);
-        flow4.Controls.Add(_btnFeatures);
-        flow4.Controls.Add(new Label { Text = "Speed:", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
-        flow4.Controls.Add(_trackSpeed);
-        flow4.Controls.Add(lblSpeedVal);
-        _trackSpeed.ValueChanged += (_, _) => lblSpeedVal.Text = (_trackSpeed.Value / 10.0).ToString("0.0") + "×";
+        _btnInspirasi = new Button { Text = "✨", Width = 40 };
+        _btnDownloadAll = new Button { Text = "⬇ Unduh", Width = 84 };
+        _btnFeatures = new Button { Text = "Fitur ▾", Width = 70 };
+        _btnSetting = new Button { Text = "⚙", Width = 40 };
 
         Controls.Add(_center);
         Controls.Add(_tafsirPanel);
@@ -812,18 +787,31 @@ internal sealed class MainForm : Form
             if (_numRangeFrom.Value > _numRangeTo.Value) _numRangeTo.Value = _numRangeFrom.Value;
         };
 
-        _btnStar.Click += (_, _) =>
+        _btnInspirasi.Click += (_, _) =>
+        {
+            using var dlg = new InspirasiDialog();
+            dlg.GotoRequested += (s, a) => _ = GotoAyahAsync(s, a);
+            dlg.ShowDialog(this);
+        };
+
+        _btnDownloadAll.Click += (_, _) =>
+        {
+            using var d = new DownloadAllDialog(CurrentReciter?.Key ?? "husary", ProgramServices.ActiveTranslationKey ?? "id_indonesian");
+            d.ShowDialog(this);
+        };
+
+        var featuresMenu = new ContextMenuStrip();
+        featuresMenu.Items.Add("* Bookmark Ayat Ini", null, (_, _) =>
         {
             ProgressStore.ToggleBookmark(_curSurah, _curAyah);
             bool now = ProgressStore.IsBookmarked(_curSurah, _curAyah);
-            ShowStatus(now ? $"★ Bookmark ditambahkan: QS {_curSurah}:{_curAyah}" : $"Bookmark dihapus: QS {_curSurah}:{_curAyah}");
-        };
-
-        _btnCard.Click += async (_, _) =>
+            ShowStatus(now ? $"Bookmark ditambahkan: QS {_curSurah}:{_curAyah}" : $"Bookmark dihapus: QS {_curSurah}:{_curAyah}");
+        });
+        featuresMenu.Items.Add("Kartu Ayat (PNG)", null, async (_, _) =>
         {
             try
             {
-                ShowStatus("Menyiapkan kartu ayat…");
+                ShowStatus("Menyiapkan kartu ayat...");
                 string arab = MadinahText.Get(_curSurah, _curAyah) ?? "";
                 string arti = "";
                 var t = CurrentTranslation;
@@ -839,22 +827,13 @@ internal sealed class MainForm : Form
             {
                 ShowStatus("Gagal: " + ex.Message, error: true);
             }
-        };
-
-        _btnInspirasi.Click += (_, _) =>
+        });
+        featuresMenu.Items.Add("Inspirasi (Ayat Hari Ini & Motivasi)", null, (_, _) =>
         {
             using var dlg = new InspirasiDialog();
             dlg.GotoRequested += (s, a) => _ = GotoAyahAsync(s, a);
             dlg.ShowDialog(this);
-        };
-
-        _btnDownloadAll.Click += (_, _) =>
-        {
-            using var d = new DownloadAllDialog(CurrentReciter?.Key ?? "husary", ProgramServices.ActiveTranslationKey ?? "id_indonesian");
-            d.ShowDialog(this);
-        };
-
-        var featuresMenu = new ContextMenuStrip();
+        });
         featuresMenu.Items.Add("Ayat Hari Ini", null, (_, _) =>
         {
             using var d = new DailyAyahDialog();
@@ -1154,8 +1133,56 @@ internal sealed class MainForm : Form
             TtsService.Dispose();
             _settings.Save();
         };
-    }
 
+        _btnSetting.Click += (_, _) =>
+        {
+            if (_settingsDlg == null || _settingsDlg.IsDisposed)
+            {
+                _settingsDlg = new SettingsDialog(
+                    ("Bacaan & Terjemahan", new (string?, Control)[]
+                    {
+                        ("Qari (reciter)", _cmbQaree),
+                        ("Terjemahan", _cmbTrans),
+                        ("Talaqaa (voice)", _cmbPb),
+                        ("Tafsir", _cmbTafsir),
+                    }),
+                    ("Tampilkan", new (string?, Control)[]
+                    {
+                        (null, _chkShowTrans),
+                        (null, _chkTafsirPanel),
+                        (null, _chkInlineTafsir),
+                        (null, _chkAutoNext),
+                        (null, _chkPlayOnClick),
+                        (null, _chkDark),
+                    }),
+                    ("Audio", new (string?, Control)[]
+                    {
+                        ("Ulangi ayat", _cmbRepeat),
+                        (null, _chkTeacher),
+                        (null, _chkRepeatRange),
+                        ("Rentang dari", _numRangeFrom),
+                        ("Rentang ke", _numRangeTo),
+                        ("Volume", _trackVolume),
+                        ("Kecepatan 0.5-2x", _trackSpeed),
+                    }),
+                    ("Mushaf", new (string?, Control)[]
+                    {
+                        ("Jenis mushaf", _cmbMosshaf),
+                        (null, _chkSinglePage),
+                        (null, _chkOverlay),
+                    }));
+            }
+            _settingsDlg.Show(this);
+            _settingsDlg.BringToFront();
+        };
+
+        _chkDark.CheckedChanged += (_, _) =>
+        {
+            _settings.DarkMode = _chkDark.Checked;
+            _settings.Save();
+            ApplyDarkMode();
+        };
+    }
     private void SwitchMode(string mode)
     {
         _textMode.Visible = mode == "teks";
