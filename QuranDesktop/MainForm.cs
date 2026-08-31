@@ -385,11 +385,6 @@ internal sealed class MainForm : Form
             Font = new Font("Segoe UI", 9.5f),
         };
 
-        _btnInspirasi = new Button { Text = "✨", Width = 40 };
-        _btnDownloadAll = new Button { Text = "⬇ Unduh", Width = 84 };
-        _btnFeatures = new Button { Text = "Fitur ▾", Width = 70 };
-        _btnSetting = new Button { Text = "⚙", Width = 40 };
-
         Controls.Add(_center);
         Controls.Add(_tafsirPanel);
         Controls.Add(_lblStatus);
