@@ -227,24 +227,24 @@ internal sealed class MainForm : Form
         _topContainer.Controls.Add(mainFlow);
         _ctxFlow.BringToFront();
 
-        _cmbMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 140, FlatStyle = FlatStyle.Flat };
+        _cmbMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 118, FlatStyle = FlatStyle.Flat };
         _cmbMode.Items.Add(new ComboItem("📖 Teks", "teks"));
         _cmbMode.Items.Add(new ComboItem("📕 Mushaf", "mushaf"));
         _cmbMode.Items.Add(new ComboItem("🧠 Hifz", "hifz"));
 
-        _cmbQaree = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, DropDownWidth = 240, FlatStyle = FlatStyle.Flat };
-        _cmbSurah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 210, DropDownWidth = 320, FlatStyle = FlatStyle.Flat };
-        _cmbAyah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 64, FlatStyle = FlatStyle.Flat };
-        _btnPlayPause = new Button { Text = "▶", Width = 44 };
-        _btnStop = new Button { Text = "■", Width = 38 };
-        _btnPrevAya = new Button { Text = "◀", Width = 34 };
-        _btnNextAya = new Button { Text = "▶", Width = 34 };
-        _txtSearch = new TextBox { Width = 130 };
-        _btnSearch = new Button { Text = "🔍", Width = 40 };
-        _btnInspirasi = new Button { Text = "✨", Width = 40 };
-        _btnDownloadAll = new Button { Text = "⬇ Unduh", Width = 84 };
-        _btnFeatures = new Button { Text = "Fitur ▾", Width = 70 };
-        _btnSetting = new Button { Text = "⚙ Pengaturan", Width = 104 };
+        _cmbQaree = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 172, DropDownWidth = 240, FlatStyle = FlatStyle.Flat };
+        _cmbSurah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 172, DropDownWidth = 320, FlatStyle = FlatStyle.Flat };
+        _cmbAyah = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 60, FlatStyle = FlatStyle.Flat };
+        _btnPlayPause = new Button { Text = "▶", Width = 40 };
+        _btnStop = new Button { Text = "■", Width = 34 };
+        _btnPrevAya = new Button { Text = "◀", Width = 30 };
+        _btnNextAya = new Button { Text = "▶", Width = 30 };
+        _txtSearch = new TextBox { Width = 96 };
+        _btnSearch = new Button { Text = "🔍", Width = 36 };
+        _btnInspirasi = new Button { Text = "✨", Width = 36 };
+        _btnDownloadAll = new Button { Text = "⬇ Unduh", Width = 80 };
+        _btnFeatures = new Button { Text = "Fitur ▾", Width = 66 };
+        _btnSetting = new Button { Text = "⚙", Width = 38 };
 
         mainFlow.Controls.Add(new Label { Text = "📖", AutoSize = true, Padding = new Padding(0, 10, 0, 0) });
         mainFlow.Controls.Add(_cmbMode);
@@ -266,11 +266,11 @@ internal sealed class MainForm : Form
         mainFlow.Controls.Add(_btnFeatures);
         mainFlow.Controls.Add(_btnSetting);
 
-        _cmbMosshaf = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, FlatStyle = FlatStyle.Flat };
+        _cmbMosshaf = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 170, FlatStyle = FlatStyle.Flat };
         foreach (var m in MushafTypes.All) _cmbMosshaf.Items.Add(new ComboItem(m.Display, m));
 
-        _cmbPage = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90, FlatStyle = FlatStyle.Flat };
-        _cmbJuz = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 100, FlatStyle = FlatStyle.Flat };
+        _cmbPage = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 84, FlatStyle = FlatStyle.Flat };
+        _cmbJuz = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 92, FlatStyle = FlatStyle.Flat };
         _btnPagePrev = new Button { Text = "◀ Hal", Width = 56 };
         _btnPageNext = new Button { Text = "Hal ▶", Width = 56 };
         _btnZoomIn = new Button { Text = "Zoom +", Width = 62 };
