@@ -85,7 +85,6 @@ internal sealed class MainForm : Form
     private Panel _topContainer = new();
     private CheckBox _chkDark = new();
     private Button _btnSetting = new();
-    private FlowLayoutPanel _ctxFlow = new();
     private SettingsDialog? _settingsDlg;
     private Button _btnFeatures = new();
     private TrackBar _trackSpeed = new();
@@ -218,14 +217,9 @@ internal sealed class MainForm : Form
 
     private void BuildUi()
     {
-        _topContainer = new Panel { Dock = DockStyle.Top, Height = 92 };
-        _ctxFlow = MakeFlow();
-        _ctxFlow.Height = 40;
+        _topContainer = new Panel { Dock = DockStyle.Top, Height = 56 };
         var mainFlow = MakeFlow();
-        mainFlow.Height = 44;
-        _topContainer.Controls.Add(_ctxFlow);
         _topContainer.Controls.Add(mainFlow);
-        _ctxFlow.BringToFront();
 
         _cmbMode = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 118, FlatStyle = FlatStyle.Flat };
         _cmbMode.Items.Add(new ComboItem("📖 Teks", "teks"));
@@ -277,24 +271,9 @@ internal sealed class MainForm : Form
         _btnZoomOut = new Button { Text = "Zoom −", Width = 62 };
         _btnFit = new Button { Text = "100%", Width = 52 };
         _btnTop = new Button { Text = "⤒", Width = 40 };
-        _chkSinglePage = new CheckBox { Text = "1 Hal.", AutoSize = true, Padding = new Padding(2, 6, 0, 0) };
-        _btnDownload = new Button { Text = "⬇ Halaman", Width = 90 };
-        _chkOverlay = new CheckBox { Text = "Arti di mushaf", AutoSize = true, Padding = new Padding(4, 6, 0, 0) };
-
-        _ctxFlow.Controls.Add(_btnPagePrev);
-        _ctxFlow.Controls.Add(_cmbMosshaf);
-        _ctxFlow.Controls.Add(_cmbPage);
-        _ctxFlow.Controls.Add(_btnPageNext);
-        _ctxFlow.Controls.Add(new Label { Text = "Juz:", AutoSize = true, Padding = new Padding(4, 10, 0, 0) });
-        _ctxFlow.Controls.Add(_cmbJuz);
-        _ctxFlow.Controls.Add(_btnZoomIn);
-        _ctxFlow.Controls.Add(_btnZoomOut);
-        _ctxFlow.Controls.Add(_btnFit);
-        _ctxFlow.Controls.Add(_btnTop);
-        _ctxFlow.Controls.Add(_chkSinglePage);
-        _ctxFlow.Controls.Add(_btnDownload);
-        _ctxFlow.Controls.Add(_chkOverlay);
-        _ctxFlow.Visible = false;
+        _chkSinglePage = new CheckBox { Text = "1 Halaman (scroll)", AutoSize = true };
+        _btnDownload = new Button { Text = "⬇ Unduh Halaman", Width = 130 };
+        _chkOverlay = new CheckBox { Text = "Arti di mushaf", AutoSize = true };
 
         _cmbTrans = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220, DropDownWidth = 250, FlatStyle = FlatStyle.Flat };
         _cmbPb = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130, FlatStyle = FlatStyle.Flat };
@@ -1158,6 +1137,24 @@ internal sealed class MainForm : Form
                         ("Rentang ke", _numRangeTo),
                         ("Volume", _trackVolume),
                         ("Kecepatan 0.5-2x", _trackSpeed),
+                    }),
+                    ("Mushaf", new (string?, Control)[]
+                    {
+                        ("Jenis mushaf", _cmbMosshaf),
+                        ("Halaman", _cmbPage),
+                        ("Juz", _cmbJuz),
+                        (null, _chkSinglePage),
+                        (null, _chkOverlay),
+                    }),
+                    ("Navigasi Halaman & Zoom Mushaf", new (string?, Control)[]
+                    {
+                        (null, _btnPagePrev),
+                        (null, _btnPageNext),
+                        (null, _btnZoomIn),
+                        (null, _btnZoomOut),
+                        (null, _btnFit),
+                        (null, _btnTop),
+                        (null, _btnDownload),
                     }));
             }
             _settingsDlg.Show(this);
@@ -1177,7 +1174,6 @@ internal sealed class MainForm : Form
     }
     private void SwitchMode(string mode)
     {
-        _ctxFlow.Visible = mode == "mushaf";
         _topContainer.Height = mode == "mushaf" ? 92 : 56;
         _textMode.Visible = mode == "teks";
         _mushafView.Visible = mode == "mushaf";
