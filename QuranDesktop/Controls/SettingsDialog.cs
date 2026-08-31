@@ -76,4 +76,14 @@ internal sealed class SettingsDialog : Form
             }
         };
     }
+
+    public void ApplyDark(bool dark)
+    {
+        BackColor = dark ? Color.FromArgb(30, 30, 34) : SystemColors.Control;
+        foreach (Control c in Controls)
+        {
+            if (c is Panel p) p.BackColor = BackColor;
+        }
+        ForeColor = dark ? Color.Gainsboro : SystemColors.ControlText;
+    }
 }

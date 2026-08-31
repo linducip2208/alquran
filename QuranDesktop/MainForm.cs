@@ -1136,7 +1136,6 @@ internal sealed class MainForm : Form
                 _settingsDlg = new SettingsDialog(
                     ("Bacaan & Terjemahan", new (string?, Control)[]
                     {
-                        ("Qari (reciter)", _cmbQaree),
                         ("Terjemahan", _cmbTrans),
                         ("Talaqaa (voice)", _cmbPb),
                         ("Tafsir", _cmbTafsir),
@@ -1159,12 +1158,6 @@ internal sealed class MainForm : Form
                         ("Rentang ke", _numRangeTo),
                         ("Volume", _trackVolume),
                         ("Kecepatan 0.5-2x", _trackSpeed),
-                    }),
-                    ("Mushaf", new (string?, Control)[]
-                    {
-                        ("Jenis mushaf", _cmbMosshaf),
-                        (null, _chkSinglePage),
-                        (null, _chkOverlay),
                     }));
             }
             _settingsDlg.Show(this);
@@ -1176,21 +1169,20 @@ internal sealed class MainForm : Form
             _settings.DarkMode = _chkDark.Checked;
             _settings.Save();
             ApplyDarkMode();
+            if (_settingsDlg != null && !_settingsDlg.IsDisposed)
+            {
+                _settingsDlg.ApplyDark(_chkDark.Checked);
+            }
         };
     }
     private void SwitchMode(string mode)
     {
+        _ctxFlow.Visible = mode == "mushaf";
+        _topContainer.Height = mode == "mushaf" ? 92 : 56;
         _textMode.Visible = mode == "teks";
         _mushafView.Visible = mode == "mushaf";
         _mushafRight.Visible = mode == "mushaf" && _chkShowTrans.Checked;
         _hifz.Visible = mode == "hifz";
-        _btnPagePrev.Visible = _cmbPage.Visible = _btnPageNext.Visible = mode == "mushaf";
-        _cmbJuz.Visible = mode == "mushaf";
-        _btnZoomIn.Visible = _btnZoomOut.Visible = mode == "mushaf";
-        _btnFit.Visible = mode == "mushaf";
-        _btnTop.Visible = mode == "mushaf";
-        _chkSinglePage.Visible = mode == "mushaf";
-        _btnDownload.Visible = mode == "mushaf";
 
         if (mode == "teks")
         {
