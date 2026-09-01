@@ -108,8 +108,10 @@ internal sealed class MainForm : Form
     private StatusStrip _statusStrip = new();
     private ToolStripStatusLabel _lblPageInfo = new();
     private ToolStripStatusLabel _lblZoomInfo = new();
+    private ToolStripStatusLabel _lblOffline = new();
     private bool _layoutReady;
     private int _detailSavedWidth = 320;
+    private bool _offlineRefreshPending;
 
     private const string AppVersion = "1.4.0";
 
@@ -149,6 +151,18 @@ internal sealed class MainForm : Form
         _mushafView.OverlayProvider = OverlayTextForAyah;
         _audio.Speed = Math.Clamp(_settings.Speed, 0.5f, 2f);
         ProgramServices.ActiveTranslationKey = _settings.Translation;
+
+        OfflineContentService.Instance.InventoryChanged += () =>
+        {
+            if (_offlineRefreshPending) return;
+            _offlineRefreshPending = true;
+            BeginInvoke(new Action(() =>
+            {
+                _offlineRefreshPending = false;
+                RefreshOfflineIndicator();
+            }));
+        };
+
         _mushafView.ZoomChanged += () =>
         {
             _settings.ZoomMode = _mushafView.ZoomMode switch
@@ -427,13 +441,20 @@ internal sealed class MainForm : Form
         };
         _lblPageInfo = new ToolStripStatusLabel { ForeColor = Color.Gainsboro };
         _lblZoomInfo = new ToolStripStatusLabel { ForeColor = Color.Gainsboro };
+        _lblOffline = new ToolStripStatusLabel
+        {
+            ForeColor = Color.Gainsboro,
+            IsLink = true,
+            Text = "",
+        };
+        _lblOffline.Click += (_, _) => OpenDownloadCenter();
         _statusStrip = new StatusStrip
         {
             Dock = DockStyle.Bottom,
             SizingGrip = false,
             BackColor = Color.FromArgb(45, 45, 48),
         };
-        _statusStrip.Items.AddRange(new ToolStripItem[] { _lblStatus, _lblPageInfo, _lblZoomInfo });
+        _statusStrip.Items.AddRange(new ToolStripItem[] { _lblStatus, _lblPageInfo, _lblZoomInfo, _lblOffline });
 
         Controls.Add(_center);
         Controls.Add(_statusStrip);
@@ -885,18 +906,31 @@ internal sealed class MainForm : Form
             if (_numRangeFrom.Value > _numRangeTo.Value) _numRangeTo.Value = _numRangeFrom.Value;
         };
 
-        _btnDownloadAll.Click += (_, _) =>
-        {
-            using var d = new DownloadAllDialog(CurrentReciter?.Key ?? "husary", ProgramServices.ActiveTranslationKey ?? "id_indonesian");
-            d.ShowDialog(this);
-        };
+        _btnDownloadAll.Click += (_, _) => OpenDownloadCenter();
 
         var featuresMenu = new ContextMenuStrip();
+        featuresMenu.Items.Add("Pusat Unduhan & Konten Offline…", null, (_, _) => OpenDownloadCenter());
+        featuresMenu.Items.Add(new ToolStripSeparator());
         featuresMenu.Items.Add("* Bookmark Ayat Ini", null, (_, _) =>
         {
             ProgressStore.ToggleBookmark(_curSurah, _curAyah);
             bool now = ProgressStore.IsBookmarked(_curSurah, _curAyah);
             ShowStatus(now ? $"Bookmark ditambahkan: QS {_curSurah}:{_curAyah}" : $"Bookmark dihapus: QS {_curSurah}:{_curAyah}");
+        });
+        featuresMenu.Items.Add("Unduh untuk offline — Ayat ini", null, (_, _) => OpenDownloadCenter(_curSurah, _curAyah));
+        featuresMenu.Items.Add("Unduh untuk offline — Surah ini", null, (_, _) => OpenDownloadCenter(_curSurah, 0));
+        featuresMenu.Items.Add("Unduh untuk offline — Juz ini", null, (_, _) =>
+        {
+            int id = QuranData.AyaToId(_curSurah, _curAyah);
+            int juz = 1;
+            for (int j = 30; j >= 1; j--)
+            {
+                var (js, ja) = QuranData.JuzStart(j);
+                if (QuranData.AyaToId(js, ja) <= id) { juz = j; break; }
+            }
+            var (s, a) = QuranData.JuzStart(juz);
+            ShowStatus($"Juz {juz} — pilih scope unduhan di Pusat Unduhan");
+            OpenDownloadCenter(s, a);
         });
         featuresMenu.Items.Add("Kartu Ayat (PNG)", null, async (_, _) =>
         {
@@ -1458,8 +1492,9 @@ internal sealed class MainForm : Form
                 {
                     try
                     {
-                        var hilites = await ProgramServices.Api.GetHilitesAsync(p, CancellationToken.None);
+                        var hilites = await ProgramServices.Api.GetHilitesAsync(mt.Key, p, CancellationToken.None);
                         _mushafView.SetHilites(p, hilites);
+                        OfflineContentService.Instance.InvalidateHilite(mt.Key, p);
                         break;
                     }
                     catch (Exception ex) when (attempt < 3)
@@ -1511,11 +1546,69 @@ internal sealed class MainForm : Form
         string range = leftPage > 0 ? $"{leftPage}–{rightPage}" : $"{rightPage}";
         _lblPageInfo.Text = $"Hal {range} / {pageCount} • {mushafName}";
         RefreshZoomStatus();
+        RefreshOfflineIndicator();
     }
 
     private void RefreshZoomStatus()
     {
         _lblZoomInfo.Text = _mushafView.ZoomLabel;
+    }
+
+    private void RefreshOfflineIndicator()
+    {
+        try
+        {
+            string mk = CurrentMushafType?.Key ?? _settings.Mosshaf;
+            string tk = ProgramServices.ActiveTranslationKey ?? "id_indonesian";
+            string fk = _settings.Tafsir;
+            var rec = Reciters.Find(_settings.Qaree) ?? Reciters.All[0];
+            var svc = OfflineContentService.Instance;
+
+            if (CurrentMode == "mushaf" && _mushafView.CurrentPage > 0)
+            {
+                int page = QuranData.FindPage(mk, _curSurah, _curAyah);
+                var st = svc.GetAyahStatus(_curSurah, _curAyah, page, mk,
+                    new[] { tk }, new[] { fk }, new[] { rec }, Array.Empty<VoiceTranslation>());
+                _lblOffline.Text =
+                    $"Offline: {(st.MushafAvailable ? "✓" : "—")} Mushaf  {(st.ArabicAvailable ? "✓" : "—")} Teks  "
+                    + $"{(st.TranslationAvailable.Values.All(v => v) ? "✓" : "—")} Arti  "
+                    + $"{(st.ReciterAudio.Values.All(a => a.IsValid) ? "✓" : "—")} Audio  ";
+                _lblOffline.ToolTipText =
+                    $"QS {_curSurah}:{_curAyah} — hal {page}\n"
+                    + $"Mushaf ({MushafTypes.Find(mk)?.Display ?? mk}): {(st.MushafAvailable ? "tersedia" : "belum")}\n"
+                    + $"Hilite: {(st.HiliteAvailable ? "tersedia" : "belum")}\n"
+                    + $"Teks Arab: {(st.ArabicAvailable ? "tersedia" : "belum")}\n"
+                    + $"Terjemahan ({Translations.Find(tk)?.Display ?? tk}): {(st.TranslationAvailable.Values.All(v => v) ? "tersedia" : "belum")}\n"
+                    + $"Tafsir ({Tafsirs.Find(fk)?.Display ?? fk}): {(st.TafsirAvailable.Values.All(v => v) ? "tersedia" : "belum")}\n"
+                    + $"Audio {rec.Display}: {(st.ReciterAudio.Values.All(a => a.IsValid) ? "tersedia" : "belum")}\n"
+                    + "Klik untuk membuka Pusat Unduhan.";
+            }
+            else
+            {
+                bool arab = svc.GetArabicStatus(_curSurah, _curAyah);
+                bool trans = !svc.GetTarjamaStatus(tk, _curSurah).MissingAyat.Contains(_curAyah);
+                bool audio = svc.GetAudioStatus(rec.Folder, _curSurah, _curAyah).IsValid;
+                _lblOffline.Text =
+                    $"Offline: {(arab ? "✓" : "—")} Teks  {(trans ? "✓" : "—")} Arti  {(audio ? "✓" : "—")} Audio  ";
+                _lblOffline.ToolTipText = $"QS {_curSurah}:{_curAyah}\nKlik untuk membuka Pusat Unduhan.";
+            }
+        }
+        catch
+        {
+            _lblOffline.Text = "";
+        }
+    }
+
+    private void OpenDownloadCenter(int gotoSurah = 0, int gotoAyah = 0)
+    {
+        using var dlg = new Controls.DownloadCenterDialog(
+            CurrentMushafType?.Key ?? _settings.Mosshaf,
+            ProgramServices.ActiveTranslationKey ?? "id_indonesian",
+            _settings.Tafsir,
+            Reciters.Find(_settings.Qaree)?.Key ?? "husary",
+            gotoSurah, gotoAyah);
+        dlg.ShowDialog(this);
+        RefreshOfflineIndicator();
     }
 
     private void BuildAyahStrip(IEnumerable<int> pages)
@@ -1718,8 +1811,22 @@ internal sealed class MainForm : Form
 
         try
         {
-            ShowStatus("Mengunduh audio…");
-            var local = await EnsureAudioAsync(url, rel, _playCts?.Token ?? CancellationToken.None);
+            var local = KsuAudio.CachePath(rel);
+            var st = OfflineContentService.Instance.GetAudioStatus(rel);
+            if (!st.IsValid)
+            {
+                ShowStatus("Mengunduh audio…");
+                bool ok = await DownloadManager.Shared.EnsureFileAsync(ProgramServices.Http, url, rel,
+                    _playCts?.Token ?? CancellationToken.None);
+                if (token != _playToken) return;
+                if (!ok)
+                {
+                    var rec = Reciters.All.FirstOrDefault(r => rel.StartsWith(r.Folder + "/", StringComparison.Ordinal));
+                    ShowStatus($"Audio QS {_curSurah}:{_curAyah} untuk {rec?.Display ?? rel.Split('/')[0]} belum tersedia offline. Buka Pusat Unduhan (⬇) untuk mengunduh.", error: true);
+                    UpdatePlayButton();
+                    return;
+                }
+            }
             if (token != _playToken) return;
 
             if (!_audio.Open(local)) throw new Exception("MCI gagal membuka file audio");
@@ -1735,20 +1842,6 @@ internal sealed class MainForm : Form
                 ShowStatus("Audio gagal: " + ex.Message, error: true);
             }
         }
-    }
-
-    private async Task<string> EnsureAudioAsync(string url, string rel, CancellationToken ct)
-    {
-        var local = KsuAudio.CachePath(rel);
-        if (File.Exists(local)) return local;
-
-        Directory.CreateDirectory(Path.GetDirectoryName(local)!);
-        using var resp = await ProgramServices.Http.GetAsync(url, ct);
-        resp.EnsureSuccessStatusCode();
-        await using var src = await resp.Content.ReadAsStreamAsync(ct);
-        await using var dst = File.Create(local);
-        await src.CopyToAsync(dst, ct);
-        return local;
     }
 
     private void OnQueueFinished(int token)

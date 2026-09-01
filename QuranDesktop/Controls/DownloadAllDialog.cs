@@ -117,33 +117,37 @@ internal sealed class DownloadAllDialog : Form
         if (_running) return;
         var mt = MushafTypes.All[0];
 
-        var jobs = new List<Job>();
+        var jobs = new List<DownloadManager.DownloadItem>();
         if (_chkPages.Checked)
         {
             for (int p = 1; p <= 604; p++)
             {
-                jobs.Add(new Job(mt.ImageBase + p + ".png", Path.Combine("mushaf", mt.Key, p + ".png"), $"Halaman {p}"));
+                jobs.Add(new DownloadManager.DownloadItem
+                {
+                    Label = $"Halaman {p}",
+                    Kind = DownloadManager.JobKind.File,
+                    Rel = $"mushaf/{mt.Key}/{p}.png",
+                    Url = mt.ImageBase + p + ".png",
+                    MinBytes = 2048,
+                });
             }
         }
         if (_chkText.Checked)
         {
             for (int s = 1; s <= 114; s++)
             {
-                jobs.Add(new Job($"tarjama:ar_ayat:{s}", $"tarjama:ar_ayat:{s}", $"Teks Arab surah {s}"));
-                jobs.Add(new Job($"tarjama:{ProgramServices.ActiveTranslationKey ?? "id_indonesian"}:{s}", $"tarjama:{ProgramServices.ActiveTranslationKey ?? "id_indonesian"}:{s}", $"Terjemahan surah {s}"));
+                jobs.Add(new DownloadManager.DownloadItem { Label = $"Teks Arab surah {s}", Kind = DownloadManager.JobKind.Tarjama, TextKey = "ar_ayat", Surah = s });
+                jobs.Add(new DownloadManager.DownloadItem { Label = $"Terjemahan surah {s}", Kind = DownloadManager.JobKind.Tarjama, TextKey = ProgramServices.ActiveTranslationKey ?? "id_indonesian", Surah = s });
             }
         }
         if (_chkAudio.Checked)
         {
             var r = (Reciter)((ComboItem)_cmbQaree.SelectedItem!).Value!;
-            for (int s = 1; s <= 114; s++)
+            jobs.AddRange(DownloadManager.BuildJobs(new DownloadManager.DownloadScope
             {
-                int n = QuranData.SurahAyahCount(s);
-                for (int a = 1; a <= n; a++)
-                {
-                    jobs.Add(new Job(KsuAudio.AyahUrl(r.Folder, s, a), Path.Combine(r.Folder, $"{s:D3}{a:D3}.mp3"), $"Audio {s}:{a}"));
-                }
-            }
+                Mushaf = false, Hilites = false, Arab = false,
+                AudioFolders = new[] { r.Folder },
+            }));
         }
         if (jobs.Count == 0) return;
 
@@ -154,78 +158,30 @@ internal sealed class DownloadAllDialog : Form
         _chkAudio.Enabled = false;
         _cmbQaree.Enabled = false;
         _btnCancel.Enabled = true;
+        _bar.Maximum = jobs.Count;
         _bar.Value = 0;
 
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
         var sw = Stopwatch.StartNew();
-        int done = 0, downloaded = 0, skipped = 0, failed = 0;
-        int total = jobs.Count;
+
+        var progress = new Progress<DownloadManager.DownloadProgress>(p =>
+        {
+            _bar.Maximum = Math.Max(1, p.Total);
+            _bar.Value = Math.Min(_bar.Maximum, p.Done);
+            _lblStatus.Text = $"{p.Done}/{p.Total} — baru {p.Downloaded}, ada {p.Skipped}, gagal {p.Failed}";
+        });
 
         try
         {
-            var semaphore = new SemaphoreSlim(4);
-            var tasks = new List<Task>();
-            foreach (var job in jobs)
-            {
-                await semaphore.WaitAsync(ct);
-                tasks.Add(Task.Run(async () =>
-                {
-                    try
-                    {
-                        if (job.Url.StartsWith("tarjama:"))
-                        {
-                            var parts = job.Url.Split(':');
-                            string key = parts[1];
-                            int surah = int.Parse(parts[2]);
-                            var map = await ProgramServices.Api.GetSurahTarjamaAsync(key, surah, ct);
-                            if (map.Count > 0) Interlocked.Increment(ref downloaded);
-                            else Interlocked.Increment(ref failed);
-                        }
-                        else
-                        {
-                            bool existed = File.Exists(KsuAudio.CachePath(job.Rel));
-                            if (existed)
-                            {
-                                Interlocked.Increment(ref skipped);
-                            }
-                            else
-                            {
-                                using var resp = await ProgramServices.Http.GetAsync(job.Url, ct);
-                                resp.EnsureSuccessStatusCode();
-                                Directory.CreateDirectory(Path.GetDirectoryName(KsuAudio.CachePath(job.Rel))!);
-                                await using var src = await resp.Content.ReadAsStreamAsync(ct);
-                                await using var dst = File.Create(KsuAudio.CachePath(job.Rel));
-                                await src.CopyToAsync(dst, ct);
-                                Interlocked.Increment(ref downloaded);
-                            }
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                    }
-                    catch
-                    {
-                        Interlocked.Increment(ref failed);
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                        int d = Interlocked.Increment(ref done);
-                        BeginInvoke(new Action(() =>
-                        {
-                            _bar.Value = Math.Min(100, d * 100 / total);
-                            _lblStatus.Text = $"{d}/{total} — baru {downloaded}, ada {skipped}, gagal {failed}";
-                        }));
-                    }
-                }, ct));
-            }
-            await Task.WhenAll(tasks);
-
+            var res = await DownloadManager.Shared.RunAsync(jobs, progress, ct);
+            OfflineContentService.Instance.InvalidateAll();
             sw.Stop();
-            _lblStatus.Text = ct.IsCancellationRequested
-                ? $"Dibatalkan pada {done}/{total}. Jalankan lagi untuk melanjutkan."
-                : $"Selesai! {downloaded} diunduh, {skipped} sudah ada, {failed} gagal ({sw.Elapsed.TotalMinutes:0} menit).";
+            _lblStatus.Text = res.Cancelled
+                ? $"Dibatalkan pada {res.Downloaded + res.Skipped + res.Failed}/{jobs.Count}. Jalankan lagi untuk melanjutkan."
+                : res.Failed == 0
+                    ? $"Selesai! {res.Downloaded} diunduh, {res.Skipped} sudah ada ({sw.Elapsed.TotalMinutes:0} menit)."
+                    : $"Selesai dengan {res.Failed} gagal — ulangi (resume otomatis).";
         }
         catch (OperationCanceledException)
         {

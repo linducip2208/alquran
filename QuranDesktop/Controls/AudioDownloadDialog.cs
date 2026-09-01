@@ -86,68 +86,36 @@ internal sealed class AudioDownloadDialog : Form
         _cmbQaree.Enabled = false;
         _cmbSurah.Enabled = false;
         _btnCancel.Enabled = true;
+        _bar.Maximum = count;
         _bar.Value = 0;
 
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
-        int done = 0, downloaded = 0, skipped = 0, failed = 0;
+        int downloaded = 0, skipped = 0, failed = 0;
+
+        var jobs = DownloadManager.BuildJobs(new DownloadManager.DownloadScope
+        {
+            Mushaf = false, Hilites = false, Arab = false,
+            AudioFolders = new[] { reciter.Folder },
+            Surahs = new[] { surah },
+        });
+        var progress = new Progress<DownloadManager.DownloadProgress>(p =>
+        {
+            _bar.Maximum = Math.Max(1, p.Total);
+            _bar.Value = Math.Min(_bar.Maximum, p.Done);
+            downloaded = p.Downloaded; skipped = p.Skipped; failed = p.Failed;
+            _lblStatus.Text = $"{p.Done}/{p.Total} — baru {p.Downloaded}, ada {p.Skipped}, gagal {p.Failed}";
+        });
 
         try
         {
-            var semaphore = new SemaphoreSlim(4);
-            var tasks = new List<Task>();
-            for (int a = 1; a <= count; a++)
-            {
-                int ayah = a;
-                await semaphore.WaitAsync(ct);
-                tasks.Add(Task.Run(async () =>
-                {
-                    try
-                    {
-                        string rel = Path.Combine(reciter.Folder, $"{surah:D3}{ayah:D3}.mp3");
-                        bool existed = File.Exists(KsuAudio.CachePath(rel));
-                        string url = KsuAudio.AyahUrl(reciter.Folder, surah, ayah);
-                        using var resp = await ProgramServices.Http.GetAsync(url, ct);
-                        resp.EnsureSuccessStatusCode();
-                        if (!existed)
-                        {
-                            Directory.CreateDirectory(Path.GetDirectoryName(KsuAudio.CachePath(rel))!);
-                            await using var src = await resp.Content.ReadAsStreamAsync(ct);
-                            await using var dst = File.Create(KsuAudio.CachePath(rel));
-                            await src.CopyToAsync(dst, ct);
-                            Interlocked.Increment(ref downloaded);
-                        }
-                        else
-                        {
-                            Interlocked.Increment(ref skipped);
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                    }
-                    catch
-                    {
-                        Interlocked.Increment(ref failed);
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                        int d = Interlocked.Increment(ref done);
-                        BeginInvoke(new Action(() =>
-                        {
-                            _bar.Value = Math.Min(100, d * 100 / count);
-                            _lblStatus.Text = $"Ayat {ayah} — {d}/{count} (baru {downloaded}, ada {skipped}, gagal {failed})";
-                        }));
-                    }
-                }, ct));
-            }
-            await Task.WhenAll(tasks);
-
-            _lblStatus.Text = ct.IsCancellationRequested
-                ? $"Dibatalkan pada {done}/{count}."
-                : failed == 0
-                    ? $"Selesai! {downloaded} file baru, {skipped} sudah ada."
-                    : $"Selesai dengan {failed} gagal — ulangi untuk melengkapi.";
+            var res = await DownloadManager.Shared.RunAsync(jobs, progress, ct);
+            OfflineContentService.Instance.ClearReciterAudioCache();
+            _lblStatus.Text = res.Cancelled
+                ? $"Dibatalkan pada {res.Downloaded + res.Skipped + res.Failed}/{count}."
+                : res.Failed == 0
+                    ? $"Selesai! {res.Downloaded} file baru, {res.Skipped} sudah ada."
+                    : $"Selesai dengan {res.Failed} gagal — ulangi untuk melengkapi (resume otomatis).";
         }
         catch (OperationCanceledException)
         {

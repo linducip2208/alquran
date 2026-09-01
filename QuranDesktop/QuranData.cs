@@ -108,7 +108,24 @@ public static class QuranData
 
     private static int[][] Table(string name) => _data.Value[name];
 
-    public static int SurahCount => Table("Sura").Length - 1;
+    public static int SurahCount { get; } = ComputeSurahCount();
+
+    private static int ComputeSurahCount()
+    {
+        var t = Table("Sura");
+        int n = t.Length - 1;
+        // Buang baris sentinel di akhir tabel (mis. [6236,1] / baris kosong)
+        while (n >= 1 && (t[n].Length == 0 || t[n].Length < 4 || t[n][0] > TotalAyahCountRaw))
+        {
+            n--;
+        }
+        return n;
+    }
+
+    private const int TotalAyahCountRaw = 6236;
+
+    /// <summary>Total ayat seluruh Al-Qur'an (6.236) — dihitung dari tabel, bukan hard-code per surah.</summary>
+    public static int TotalAyahCount => AyaToId(SurahCount, SurahAyahCount(SurahCount)) + 1;
 
     public static int SurahStartId(int surah) => Table("Sura")[surah][0];
 

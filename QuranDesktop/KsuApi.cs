@@ -13,7 +13,12 @@ public sealed class KsuApi
     private readonly HttpClient _http = CreateClient();
     private readonly ConcurrentDictionary<string, string> _tafsirCache = new();
     private readonly ConcurrentDictionary<string, Dictionary<int, string>> _tarjamaCache = new();
-    private readonly ConcurrentDictionary<int, Dictionary<string, int[]>> _hilitesCache = new();
+    private readonly ConcurrentDictionary<string, Dictionary<string, int[]>> _hilitesCache = new();
+
+    // Lock per file tafsir/hilites agar penulisan JSON aman terhadap fetch paralel
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _fileLocks = new();
+
+    private static SemaphoreSlim FileLock(string path) => _fileLocks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
 
     private static HttpClient CreateClient()
     {
@@ -24,10 +29,89 @@ public sealed class KsuApi
         return c;
     }
 
+    // ---------- TAFSIR (disk cache: cache/tafsir/{author}/{surah}.json) ----------
+
+    public static string TafsirPath(string author, int surah)
+        => Path.Combine(KsuAudio.CacheDir, "tafsir", author, surah + ".json");
+
+    private static async Task<Dictionary<int, string>> ReadTafsirDiskAsync(string author, int surah, CancellationToken ct)
+    {
+        var result = new Dictionary<int, string>();
+        string path = TafsirPath(author, surah);
+        try
+        {
+            if (!File.Exists(path)) return result;
+            using var fs = File.OpenRead(path);
+            using var doc = await JsonDocument.ParseAsync(fs, cancellationToken: ct);
+            if (doc.RootElement.TryGetProperty("ayat", out var ayatEl) && ayatEl.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in ayatEl.EnumerateObject())
+                {
+                    if (int.TryParse(prop.Name, out int a) && prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        result[a] = prop.Value.GetString() ?? "";
+                    }
+                }
+            }
+        }
+        catch
+        {
+        }
+        return result;
+    }
+
+    private static async Task WriteTafsirDiskAsync(string author, int surah, Dictionary<int, string> ayat, CancellationToken ct)
+    {
+        string path = TafsirPath(author, surah);
+        try
+        {
+            var lockObj = FileLock(path);
+            await lockObj.WaitAsync(ct);
+            try
+            {
+                var existing = await ReadTafsirDiskAsync(author, surah, ct);
+                foreach (var (a, text) in ayat)
+                {
+                    if (string.IsNullOrWhiteSpace(text) && existing.TryGetValue(a, out var old)) ayat[a] = old;
+                    else if (!string.IsNullOrWhiteSpace(text)) existing[a] = text;
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                using var ms = new MemoryStream();
+                using (var writer = new Utf8JsonWriter(ms))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteStartObject("ayat");
+                    foreach (var (a, text) in existing.OrderBy(k => k.Key))
+                    {
+                        writer.WriteString(a.ToString(), text);
+                    }
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                }
+                File.WriteAllBytes(path, ms.ToArray());
+            }
+            finally
+            {
+                lockObj.Release();
+            }
+        }
+        catch
+        {
+        }
+    }
+
     public async Task<string> GetTafsirAsync(string author, int surah, int ayah, CancellationToken ct)
     {
         string key = $"{author}|{surah}|{ayah}";
         if (_tafsirCache.TryGetValue(key, out var cached)) return cached;
+
+        // L2: disk cache persisten — bekerja offline
+        var disk = await ReadTafsirDiskAsync(author, surah, ct);
+        if (disk.TryGetValue(ayah, out var diskText) && !string.IsNullOrWhiteSpace(diskText))
+        {
+            _tafsirCache[key] = diskText;
+            return diskText;
+        }
 
         string url = $"{InterfaceUrl}&do=tafsir&author={Uri.EscapeDataString(author)}&sura={surah}&aya={ayah}";
         string raw = await _http.GetStringAsync(url, ct);
@@ -35,6 +119,11 @@ public sealed class KsuApi
         int sep = raw.IndexOf("|||", StringComparison.Ordinal);
         if (sep >= 0) text = raw[(sep + 3)..];
         _tafsirCache[key] = text;
+
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            await WriteTafsirDiskAsync(author, surah, new Dictionary<int, string> { [ayah] = text }, ct);
+        }
         return text;
     }
 
@@ -157,9 +246,88 @@ public sealed class KsuApi
         return results;
     }
 
-    public async Task<Dictionary<string, int[]>> GetHilitesAsync(int page, CancellationToken ct)
+    // ---------- HILITES (disk cache: cache/hilites/{mushafKey}/{page}.json) ----------
+
+    public static string HilitesPath(string mushafKey, int page)
+        => Path.Combine(KsuAudio.CacheDir, "hilites", mushafKey, page + ".json");
+
+    private static async Task<Dictionary<string, int[]>?> ReadHilitesDiskAsync(string mushafKey, int page, CancellationToken ct)
     {
-        if (_hilitesCache.TryGetValue(page, out var cached)) return cached;
+        string path = HilitesPath(mushafKey, page);
+        try
+        {
+            if (!File.Exists(path)) return null;
+            using var fs = File.OpenRead(path);
+            using var doc = await JsonDocument.ParseAsync(fs, cancellationToken: ct);
+            var map = new Dictionary<string, int[]>();
+            if (doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                {
+                    if (prop.Value.ValueKind == JsonValueKind.Array && prop.Value.GetArrayLength() >= 2)
+                    {
+                        map[prop.Name] = new[] { prop.Value[0].GetInt32(), prop.Value[1].GetInt32() };
+                    }
+                }
+            }
+            return map.Count > 0 ? map : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static async Task WriteHilitesDiskAsync(string mushafKey, int page, Dictionary<string, int[]> map, CancellationToken ct)
+    {
+        string path = HilitesPath(mushafKey, page);
+        try
+        {
+            var lockObj = FileLock(path);
+            await lockObj.WaitAsync(ct);
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                using var ms = new MemoryStream();
+                using (var writer = new Utf8JsonWriter(ms))
+                {
+                    writer.WriteStartObject();
+                    foreach (var (k, v) in map.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+                    {
+                        writer.WriteStartArray(k);
+                        writer.WriteNumberValue(v[0]);
+                        writer.WriteNumberValue(v[1]);
+                        writer.WriteEndArray();
+                    }
+                    writer.WriteEndObject();
+                }
+                File.WriteAllBytes(path, ms.ToArray());
+            }
+            finally
+            {
+                lockObj.Release();
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    public async Task<Dictionary<string, int[]>> GetHilitesAsync(int page, CancellationToken ct)
+        => await GetHilitesAsync("hafs", page, ct);
+
+    public async Task<Dictionary<string, int[]>> GetHilitesAsync(string mushafKey, int page, CancellationToken ct)
+    {
+        string key = $"{mushafKey}|{page}";
+        if (_hilitesCache.TryGetValue(key, out var cached)) return cached;
+
+        // L2: disk cache persisten — reader tetap bisa highlight/klik ayat saat offline
+        var disk = await ReadHilitesDiskAsync(mushafKey, page, ct);
+        if (disk != null)
+        {
+            _hilitesCache[key] = disk;
+            return disk;
+        }
 
         string url = $"{InterfaceUrl}&do=hilites&page={page}";
         using var stream = await _http.GetStreamAsync(url, ct);
@@ -183,7 +351,11 @@ public sealed class KsuApi
                 }
             }
         }
-        _hilitesCache[page] = map;
+        _hilitesCache[key] = map;
+        if (map.Count > 0)
+        {
+            await WriteHilitesDiskAsync(mushafKey, page, map, ct);
+        }
         return map;
     }
 

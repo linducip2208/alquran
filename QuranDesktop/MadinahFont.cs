@@ -121,6 +121,8 @@ public static class MadinahText
         return _byId != null && _byId.TryGetValue(QuranData.AyaToId(surah, ayah), out var t) ? t : null;
     }
 
+    public static bool HasAyah(int surah, int ayah) => !string.IsNullOrWhiteSpace(Get(surah, ayah));
+
     public static Dictionary<int, string> GetSurah(int surah)
     {
         Ensure();

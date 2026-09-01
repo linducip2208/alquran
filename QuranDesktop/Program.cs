@@ -3,8 +3,14 @@ namespace QuranDesktop;
 static class Program
 {
     [STAThread]
-    static void Main()
+    static void Main(string[] args)
     {
+        if (args.Contains("--selftest"))
+        {
+            Environment.ExitCode = OfflineSelfTest.RunAll();
+            return;
+        }
+
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += (s, e) => Log(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (s, e) => Log(e.ExceptionObject as Exception);
