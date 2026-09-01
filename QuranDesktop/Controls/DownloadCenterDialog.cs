@@ -76,6 +76,60 @@ internal sealed class DownloadCenterDialog : Form
         public bool Complete => Mushaf && Hilite && Arab && Trans && Tafsir && Audio;
     }
 
+    /// <summary>Card ringkasan: border tipis, judul kecil di atas, nilai besar di bawah, tint status lembut.</summary>
+    private sealed class CardPanel : Panel
+    {
+        private readonly Label _title = new()
+        {
+            Dock = DockStyle.Top,
+            Height = 20,
+            Font = new Font("Segoe UI", 8.5f),
+            ForeColor = Color.FromArgb(120, 120, 125),
+            Padding = new Padding(1, 2, 0, 0),
+            BackColor = Color.Transparent,
+        };
+        private readonly Label _value = new()
+        {
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 10.5f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(45, 45, 50),
+            TextAlign = ContentAlignment.MiddleLeft,
+            BackColor = Color.Transparent,
+        };
+
+        public CardPanel()
+        {
+            DoubleBuffered = true;
+            BackColor = Color.White;
+            Padding = new Padding(11, 9, 11, 9);
+            MinimumSize = new Size(150, 66);
+            Height = 66;
+            Controls.Add(_value);
+            Controls.Add(_title);
+        }
+
+        public string Title { get => _title.Text; set => _title.Text = value; }
+        public string Value { get => _value.Text; set => _value.Text = value; }
+
+        /// <summary>true = hijau lembut, false = merah lembut, null = netral.</summary>
+        public void SetState(bool? ok)
+        {
+            BackColor = ok == true ? Color.FromArgb(236, 247, 237)
+                : ok == false ? Color.FromArgb(251, 238, 238)
+                : Color.White;
+            _value.ForeColor = ok == true ? Color.FromArgb(28, 110, 52)
+                : ok == false ? Color.FromArgb(160, 52, 52)
+                : Color.FromArgb(45, 45, 50);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            using var pen = new Pen(Color.FromArgb(225, 225, 228));
+            e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+        }
+    }
+
     public DownloadCenterDialog(
         string mushafKey, string transKey, string tafsirKey, string qareeKey,
         int gotoSurah = 0, int gotoAyah = 0)
@@ -149,7 +203,20 @@ internal sealed class DownloadCenterDialog : Form
             BackgroundColor = Color.White,
             BorderStyle = BorderStyle.None,
             EnableHeadersVisualStyles = true,
+            AllowUserToOrderColumns = false,
+            RowTemplate = { Height = 26 },
         };
+        // header lebih jelas + alternating row lembut
+        g.ColumnHeadersDefaultCellStyle.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
+        g.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(244, 244, 242);
+        g.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(60, 60, 65);
+        g.ColumnHeadersDefaultCellStyle.Padding = new Padding(6, 4, 6, 4);
+        g.ColumnHeadersHeight = 32;
+        g.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+        g.EnableHeadersVisualStyles = false;
+        g.DefaultCellStyle.SelectionBackColor = Color.FromArgb(214, 230, 246);
+        g.DefaultCellStyle.SelectionForeColor = Color.Black;
+        g.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(249, 249, 247);
         return g;
     }
 
@@ -197,7 +264,7 @@ internal sealed class DownloadCenterDialog : Form
     private TabPage BuildTabRingkasan()
     {
         var page = new TabPage("Ringkasan");
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4, Padding = new Padding(8) };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 4, Padding = new Padding(10) };
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (int i = 0; i < 4; i++) layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
@@ -205,17 +272,8 @@ internal sealed class DownloadCenterDialog : Form
         for (int i = 0; i < 3; i++) cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.3f));
         foreach (var key in new[] { "card.mushaf", "card.hilite", "card.arab", "card.trans", "card.tafsir", "card.audio", "card.storage", "card.status", "card.hint" })
         {
-            var lbl = new Label
-            {
-                Name = key,
-                Text = "…",
-                Dock = DockStyle.Fill,
-                Font = new Font("Segoe UI", 10f),
-                Padding = new Padding(8, 10, 8, 10),
-                Margin = new Padding(4),
-                BackColor = Color.FromArgb(248, 248, 245),
-            };
-            cards.Controls.Add(lbl);
+            var card = new CardPanel { Name = key, Title = "…", Value = "Memuat…", Margin = new Padding(4) };
+            cards.Controls.Add(card);
         }
         layout.Controls.Add(cards, 0, 0);
         layout.SetColumnSpan(cards, 2);
@@ -225,13 +283,13 @@ internal sealed class DownloadCenterDialog : Form
         profile.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         profile.Controls.Add(Heading("Profil Unduhan"), 0, 0);
         profile.SetColumnSpan(profile.Controls[0], 2);
-        var profileRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true };
+        var profileRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = new Padding(0) };
         _cmbProfile.Items.AddRange(new object[] { "BASIC OFFLINE", "READING OFFLINE", "FULL OFFLINE", "CUSTOM" });
         _cmbProfile.SelectedIndex = 0;
         foreach (var r in Reciters.All) _cmbProfileQari.Items.Add(new ComboItem(r.Display, r));
         _cmbProfileQari.SelectedIndex = Math.Max(0, Reciters.All.FindIndex(r => r.Key == _qareeKey));
         profileRow.Controls.Add(_cmbProfile);
-        profileRow.Controls.Add(new Label { Text = "Qari:", AutoSize = true, Margin = new Padding(8, 6, 2, 0) });
+        profileRow.Controls.Add(new Label { Text = "Qari:", AutoSize = true, Margin = new Padding(12, 7, 4, 0) });
         profileRow.Controls.Add(_cmbProfileQari);
         profileRow.Controls.Add(_chkMushaf);
         profileRow.Controls.Add(_chkHilite);
@@ -242,13 +300,20 @@ internal sealed class DownloadCenterDialog : Form
         profile.Controls.Add(profileRow, 0, 1);
         profile.SetColumnSpan(profileRow, 2);
 
-        var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.LeftToRight };
-        var btnStart = new Button { Text = "▶ Mulai Unduhan (hanya yang kurang)", Width = 250 };
-        var btnScan = new Button { Text = "Scan Ulang", Width = 110 };
-        var btnVerify = new Button { Text = "Verifikasi", Width = 100 };
-        var btnMissing = new Button { Text = "Unduh Yang Kurang (paket aktif)", Width = 230 };
-        var btnAll = new Button { Text = "Unduh Semua (FULL OFFLINE)", Width = 200 };
-        var btnFolder = new Button { Text = "Buka Folder", Width = 100 };
+        var actions = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
+            Margin = new Padding(0),
+        };
+        var btnStart = ActionButton("▶ Mulai Unduhan (hanya yang kurang)", 250);
+        var btnScan = ActionButton("Scan Ulang", 110);
+        var btnVerify = ActionButton("Verifikasi", 100);
+        var btnMissing = ActionButton("Unduh Yang Kurang (paket aktif)", 230);
+        var btnAll = ActionButton("Unduh Semua (FULL OFFLINE)", 200);
+        var btnFolder = ActionButton("Buka Folder", 100);
         btnStart.Click += async (_, _) => await StartProfileAsync();
         btnScan.Click += async (_, _) => { OfflineContentService.Instance.InvalidateAll(); await RefreshAllAsync(); };
         btnVerify.Click += async (_, _) => { OfflineContentService.Instance.InvalidateAll(); await RefreshAllAsync(deep: true); };
@@ -260,11 +325,11 @@ internal sealed class DownloadCenterDialog : Form
         layout.SetColumnSpan(actions, 2);
         var hint = new Label
         {
-            Text = "Semua unduhan hanya mengambil file yang belum ada/rusak; file diunduh ke .part lalu dipindah setelah valid. " +
-                   "Catatan: teks Arab & terjemahan di-cache per surah (1 JSON berisi seluruh ayat surah), tafsir & audio per ayat, mushaf & hilite per halaman.",
+            Text = "Semua unduhan hanya mengambil file yang belum ada/rusak. File diunduh ke .part lalu dipindah otomatis setelah valid.",
             AutoSize = true,
-            ForeColor = Color.DimGray,
-            Padding = new Padding(6),
+            MaximumSize = new Size(860, 0),
+            ForeColor = Color.FromArgb(110, 110, 115),
+            Padding = new Padding(10, 6, 10, 4),
         };
         layout.Controls.Add(hint, 0, 2);
         layout.SetColumnSpan(hint, 2);
@@ -272,6 +337,17 @@ internal sealed class DownloadCenterDialog : Form
         page.Controls.Add(layout);
         return page;
     }
+
+    /// <summary>Tombol aksi seragam: tinggi 32, margin 6, wrap rapi.</summary>
+    private static Button ActionButton(string text, int width)
+        => new()
+        {
+            Text = text,
+            Width = width,
+            Height = 32,
+            UseVisualStyleBackColor = true,
+            Margin = new Padding(3, 4, 3, 4),
+        };
 
     private TabPage BuildTabSurah()
     {
@@ -521,7 +597,19 @@ internal sealed class DownloadCenterDialog : Form
 
     private Control BottomPanel()
     {
-        var panel = new Panel { Dock = DockStyle.Fill, Height = 56, Padding = new Padding(8, 4, 8, 8) };
+        var panel = new Panel { Dock = DockStyle.Fill, Height = 62, Padding = new Padding(10, 6, 10, 8), BackColor = Color.FromArgb(250, 250, 249) };
+        panel.Paint += (_, e) =>
+        {
+            using var pen = new Pen(Color.FromArgb(228, 228, 230));
+            e.Graphics.DrawLine(pen, 0, 0, panel.Width, 0);
+        };
+        _bar.Height = 18;
+        _bar.Margin = new Padding(0, 4, 8, 2);
+        _btnCancelJobs.Height = 28;
+        _btnCancelJobs.Margin = new Padding(4, 0, 0, 0);
+        _lblProgress.ForeColor = Color.FromArgb(70, 70, 75);
+        _lblProgress.Margin = new Padding(1, 3, 0, 0);
+        _lblProgress.AutoEllipsis = true;
         var table = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -530,6 +618,7 @@ internal sealed class DownloadCenterDialog : Form
         table.Controls.Add(_bar, 0, 0);
         table.Controls.Add(_btnCancelJobs, 1, 0);
         table.Controls.Add(_lblProgress, 0, 1);
+        table.SetColumnSpan(_lblProgress, 2);
         _btnCancelJobs.Click += (_, _) => _jobCts?.Cancel();
         panel.Controls.Add(table);
         return panel;
@@ -673,7 +762,13 @@ internal sealed class DownloadCenterDialog : Form
         }
         catch (Exception ex)
         {
+            // scan gagal → jangan biarkan UI kosong/membingungkan; isi placeholder jelas
             _lblProgress.Text = "Scan gagal: " + ex.Message;
+            foreach (var key in new[] { "card.mushaf", "card.hilite", "card.arab", "card.trans", "card.tafsir", "card.audio", "card.storage", "card.status" })
+            {
+                SetCard(key, key.Split('.')[1], "Data belum tersedia karena scan gagal.", null);
+            }
+            SetCard("card.hint", "Tips", "Coba [Scan Ulang] atau [Verifikasi]. Pastikan disk cache dapat diakses.", null);
         }
         finally
         {
@@ -711,12 +806,11 @@ internal sealed class DownloadCenterDialog : Form
     private void SetCard(string name, string title, string value, bool? ok)
     {
         if (_tabs.TabPages.Count == 0 || _tabs.TabPages[0].Controls.Count == 0) return;
-        var lbl = _tabs.TabPages[0].Controls.Find(name, true).FirstOrDefault() as Label;
+        var lbl = _tabs.TabPages[0].Controls.Find(name, true).FirstOrDefault() as CardPanel;
         if (lbl == null) return;
-        lbl.Text = $"{title}\n{value}";
-        lbl.BackColor = ok == true ? Color.FromArgb(232, 246, 233)
-            : ok == false ? Color.FromArgb(250, 236, 236)
-            : Color.FromArgb(248, 248, 245);
+        lbl.Title = title;
+        lbl.Value = value;
+        lbl.SetState(ok);
     }
 
     private void FillSurahGrid()
@@ -772,7 +866,8 @@ internal sealed class DownloadCenterDialog : Form
             if (row.Index < 0 || row.Index >= _surahRows.Length) continue;
             var s = _surahRows[row.Index];
             row.DefaultCellStyle.BackColor = s.Complete ? Color.FromArgb(236, 248, 238)
-                : s.Partial ? Color.White : Color.FromArgb(250, 244, 244);
+                : s.Partial ? Color.Empty // biarkan alternating style
+                : Color.FromArgb(250, 244, 244);
         }
     }
 

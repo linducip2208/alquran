@@ -1350,7 +1350,13 @@ internal sealed class MainForm : Form
     {
         var mt = CurrentMushafType;
         if (mt == null || _mushafView.CurrentPage < 0) return;
-        int target = Math.Clamp(_mushafView.CurrentPage + delta * 2, 1, QuranData.PageCount(mt.PageKey));
+        // mode 2 halaman melompat 2 (satu spread), mode 1 halaman melompat 1
+        int step = _mushafView.SinglePage ? 1 : 2;
+        // normalisasi ke halaman kanan (ganjil) spread aktif agar maju/mundur konsisten
+        int current = _mushafView.SpreadPages.Right > 0 && !_mushafView.SinglePage
+            ? _mushafView.SpreadPages.Right
+            : _mushafView.CurrentPage;
+        int target = Math.Clamp(current + delta * step, 1, QuranData.PageCount(mt.PageKey));
         var (s, a) = QuranData.PageStart(mt.PageKey, target);
         _ = GotoAyahAsync(s, a);
     }
@@ -1512,7 +1518,9 @@ internal sealed class MainForm : Form
                 UpdateMushafInfo(selectSurah.Value, selectAyah.Value);
             }
 
-            string range = leftPage > 0 ? $"{leftPage}–{rightPage}" : $"{rightPage}";
+            string range = leftPage > 0
+                ? $"{Math.Min(leftPage, rightPage)}–{Math.Max(leftPage, rightPage)}"
+                : $"{rightPage}";
             ShowStatus($"Halaman {range} / {pageCount} • {mt.Display}");
         }
         catch (Exception ex)
@@ -1543,7 +1551,10 @@ internal sealed class MainForm : Form
 
     private void UpdatePageInfo(int rightPage, int leftPage, int pageCount, string mushafName)
     {
-        string range = leftPage > 0 ? $"{leftPage}–{rightPage}" : $"{rightPage}";
+        // urut natural: 49–50, bukan 50–49
+        string range = leftPage > 0
+            ? $"{Math.Min(leftPage, rightPage)}–{Math.Max(leftPage, rightPage)}"
+            : $"{rightPage}";
         _lblPageInfo.Text = $"Hal {range} / {pageCount} • {mushafName}";
         RefreshZoomStatus();
         RefreshOfflineIndicator();
@@ -1608,6 +1619,8 @@ internal sealed class MainForm : Form
             _settings.Tafsir,
             Reciters.Find(_settings.Qaree)?.Key ?? "husary",
             gotoSurah, gotoAyah);
+        // tombol "Buka Ayat" pada dialog → pindahkan reader ke ayat tsb
+        dlg.GotoRequested += (s, a) => _ = GotoAyahAsync(s, a);
         dlg.ShowDialog(this);
         RefreshOfflineIndicator();
     }

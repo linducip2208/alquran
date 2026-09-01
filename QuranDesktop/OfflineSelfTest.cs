@@ -39,6 +39,7 @@ public static class OfflineSelfTest
         TafsirDiskCache();
         HiliteDiskCache();
         AyahStatusAccuracy();
+        ScanSurahAllMushafs();
         DownloadEngineAsync().GetAwaiter().GetResult();
         StorageActualBytes();
         LegacyCompatibility();
@@ -79,6 +80,14 @@ public static class OfflineSelfTest
                 $"2:283={p1} (max {pc})");
         }
         Check("ResolveMushaf(key tak dikenal) fallback", MushafTypes.ResolveMushaf("??").PageKey == MushafTypes.All[0].PageKey);
+        Check("ResolvePageKey(hafs) = Page", MushafTypes.ResolvePageKey("hafs") == "Page");
+        Check("ResolvePageKey(warsh) = Page_warsh", MushafTypes.ResolvePageKey("warsh") == "Page_warsh");
+        Check("ResolvePageKey(tajweed) = Page2", MushafTypes.ResolvePageKey("tajweed") == "Page2");
+        Check("MushafPageCount(tajweed) = 604", MushafTypes.MushafPageCount("tajweed") == 604, $"got {MushafTypes.MushafPageCount("tajweed")}");
+        Check("MushafPageStart(hafs, 1) = 1:1", MushafTypes.MushafPageStart("hafs", 1) == (1, 1));
+        Check("QuranData pageKey tak dikenal tidak crash (fallback Page)",
+            QuranData.PageCount("tajweed") > 0 && QuranData.FindPage("tajweed", 1, 1) >= 1,
+            $"count={QuranData.PageCount("tajweed")}");
         Check("FindPage(Page) 2:282 = halaman valid",
             QuranData.FindPage("Page", 2, 282) >= 1 && QuranData.FindPage("Page", 2, 282) <= 604,
             $"got {QuranData.FindPage("Page", 2, 282)}");
@@ -272,6 +281,41 @@ public static class OfflineSelfTest
             st.TafsirAvailable.TryGetValue("selftest_missing_tafsir", out var tfv) && !tfv);
         Check("GetAyahStatus MushafAvailable mencerminkan file aktual", st.MushafAvailable == svc.GetMushafPageStatus("hafs", 1).IsValid);
         Check("GetAyahStatus HiliteAvailable mencerminkan file aktual", st.HiliteAvailable == svc.GetHiliteStatus("hafs", 1));
+    }
+
+    // 4c. ScanSurah untuk SEMUA mushaf (hafs/warsh/tajweed) tidak crash — regresi key salah
+    private static void ScanSurahAllMushafs()
+    {
+        Console.WriteLine("-- ScanSurah semua mushaf (regresi key)");
+        var svc = OfflineContentService.Instance;
+        foreach (var mt in MushafTypes.All)
+        {
+            try
+            {
+                var sum = svc.ScanSurah(2, mt.Key,
+                    new[] { "selftest_scan_trans" }, new[] { "selftest_scan_tafsir" },
+                    new[] { Reciters.All[0] });
+                Check($"ScanSurah(2, {mt.Key}) tidak crash & mapping halaman valid",
+                    sum.MushafPagesTotal >= 1 && sum.MushafPagesTotal <= MushafTypes.MushafPageCount(mt.Key)
+                    && sum.MushafPages >= 0 && sum.MushafPages <= sum.MushafPagesTotal,
+                    $"total={sum.MushafPagesTotal} valid={sum.MushafPages}");
+            }
+            catch (Exception ex)
+            {
+                Check($"ScanSurah(2, {mt.Key}) tidak crash", false, ex.Message);
+            }
+        }
+        // mushaf key tidak dikenal → fallback, tidak crash
+        try
+        {
+            var sum = svc.ScanSurah(1, "key_ngawur",
+                Array.Empty<string>(), Array.Empty<string>(), Array.Empty<Reciter>());
+            Check("ScanSurah key tak dikenal fallback tanpa crash", sum.MushafPages >= 1);
+        }
+        catch (Exception ex)
+        {
+            Check("ScanSurah key tak dikenal fallback tanpa crash", false, ex.Message);
+        }
     }
 
     // 6b. Storage actual bytes

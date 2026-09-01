@@ -13,8 +13,11 @@ static class Program
 
         if (args.Contains("--dlctest"))
         {
+            // --dlctest [mushafKey] — smoke test dialog dengan mushaf apa pun (mis. tajweed)
+            var rest = args.SkipWhile(a => a != "--dlctest").Skip(1).ToList();
+            string mushaf = rest.Count > 0 ? rest[0] : "hafs";
             ApplicationConfiguration.Initialize();
-            using var dlg = new Controls.DownloadCenterDialog("hafs", "id_indonesian", "indonesian", "husary");
+            using var dlg = new Controls.DownloadCenterDialog(mushaf, "id_indonesian", "indonesian", "husary");
             dlg.Show();
             int waited = 0;
             while (!dlg.IsHandleCreated || waited < 15000)
@@ -26,7 +29,7 @@ static class Program
             Thread.Sleep(6000);
             Application.DoEvents();
             dlg.Close();
-            Console.WriteLine("DLCTEST-OK");
+            Console.WriteLine($"DLCTEST-OK ({mushaf})");
             return;
         }
 

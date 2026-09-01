@@ -106,7 +106,11 @@ public static class QuranData
         return rows.ToArray();
     }
 
-    private static int[][] Table(string name) => _data.Value[name];
+    /// <summary>Ambil tabel berdasarkan key. Key tidak dikenal (mis. mushaf key "tajweed"
+    /// terkirim sebagai pageKey) TIDAK melempar exception — fallback ke tabel "Page"
+    /// agar scan/UI tidak pernah crash karena salah key.</summary>
+    private static int[][] Table(string name)
+        => _data.Value.TryGetValue(name, out var t) ? t : _data.Value["Page"];
 
     public static int SurahCount { get; } = ComputeSurahCount();
 
