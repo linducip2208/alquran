@@ -5,3 +5,6 @@ publish/
 *.user
 *.suo
 *.log
+
+# dist build output (zip + copy untuk distribusi) — tidak di-commit
+QuranDesktop/dist/
