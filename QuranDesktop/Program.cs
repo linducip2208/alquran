@@ -11,6 +11,9 @@ static class Program
             return;
         }
 
+        // migrasi cache lama (%LOCALAPPDATA%) → downloads/ di samping exe, sekali di background
+        OfflineMigrator.EnsureStarted();
+
         if (args.Contains("--dlctest"))
         {
             // --dlctest [mushafKey] — smoke test dialog dengan mushaf apa pun (mis. tajweed).

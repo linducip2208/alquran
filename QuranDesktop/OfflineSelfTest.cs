@@ -34,12 +34,14 @@ public static class OfflineSelfTest
 
         CheckCounts();
         AudioDetection();
+        AudioPathLayout();
         TextJsonDetection();
         TextAyatAccuracy();
         TafsirDiskCache();
         HiliteDiskCache();
         AyahStatusAccuracy();
         ScanSurahAllMushafs();
+        MigratorTest();
         DownloadEngineAsync().GetAwaiter().GetResult();
         StorageActualBytes();
         LegacyCompatibility();
@@ -127,6 +129,96 @@ public static class OfflineSelfTest
         {
             try { Directory.Delete(dir, true); } catch { }
             svc.ClearReciterAudioCache();
+        }
+    }
+
+    // 2b. Layout path: audio/{folder}, voice/{folder}, root di samping exe
+    private static void AudioPathLayout()
+    {
+        Console.WriteLine("-- Layout path audio/voice & root downloads");
+        var svc = OfflineContentService.Instance;
+        Check("DataRoot = exe/downloads (bukan LocalApplicationData)",
+            KsuAudio.CacheDir.EndsWith(Path.Combine("downloads") + "", StringComparison.OrdinalIgnoreCase)
+            && KsuAudio.CacheDir.StartsWith(AppContext.BaseDirectory, StringComparison.OrdinalIgnoreCase),
+            KsuAudio.CacheDir);
+
+        string recFolder = "SelfTest_Reciter";
+        string voiceFolder = VoiceTranslations.All[0].Folder;
+        try
+        {
+            string recFile = Path.Combine(KsuAudio.AudioRoot, recFolder, "001001.mp3");
+            Directory.CreateDirectory(Path.GetDirectoryName(recFile)!);
+            File.WriteAllBytes(recFile, new byte[8192]);
+            svc.InvalidateAudio($"audio/{recFolder}/001001.mp3");
+            Check("GetAudioStatus(folder,s,a) membaca downloads/audio/{folder}/001001.mp3",
+                svc.GetAudioStatus(recFolder, 1, 1).IsValid);
+
+            string voiceFile = Path.Combine(KsuAudio.VoiceRoot, voiceFolder, "001001.mp3");
+            Directory.CreateDirectory(Path.GetDirectoryName(voiceFile)!);
+            File.WriteAllBytes(voiceFile, new byte[8192]);
+            svc.InvalidateAudio($"voice/{voiceFolder}/001001.mp3");
+            Check("GetVoiceStatus membaca downloads/voice/{folder}/001001.mp3",
+                svc.GetVoiceStatus(voiceFolder, 1, 1).IsValid);
+
+            Check("audio inventory TIDAK tercampur mushaf",
+                !svc.GetAudioStatus(recFolder, 1, 1).LocalPath.Contains("mushaf", StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            try { Directory.Delete(Path.Combine(KsuAudio.AudioRoot, recFolder), true); } catch { }
+            try { Directory.Delete(Path.Combine(KsuAudio.VoiceRoot, voiceFolder), true); } catch { }
+            svc.InvalidateAudio($"audio/{recFolder}/001001.mp3");
+            svc.InvalidateAudio($"voice/{voiceFolder}/001001.mp3");
+        }
+    }
+
+    // 2c. Migrator: cache lama → downloads/ (idempotent, skip resource existing, skip folder test)
+    private static void MigratorTest()
+    {
+        Console.WriteLine("-- Migrasi cache lama");
+        string baseDir = Path.Combine(KsuAudio.DataRoot, "SelfTest_Mig");
+        string oldRoot = Path.Combine(baseDir, "old");
+        string newRoot = Path.Combine(baseDir, "new");
+        try
+        {
+            // susun cache lama palsu
+            Directory.CreateDirectory(Path.Combine(oldRoot, "mushaf", "hafs"));
+            Directory.CreateDirectory(Path.Combine(oldRoot, "teks", "id_indonesian"));
+            Directory.CreateDirectory(Path.Combine(oldRoot, "Husary_64kbps"));
+            Directory.CreateDirectory(Path.Combine(oldRoot, "English_Walk"));
+            Directory.CreateDirectory(Path.Combine(oldRoot, "test_5xx"));
+            Directory.CreateDirectory(Path.Combine(newRoot, "mushaf", "hafs"));
+            File.WriteAllText(Path.Combine(oldRoot, "mushaf", "hafs", "1.png"), "m");
+            File.WriteAllText(Path.Combine(oldRoot, "mushaf", "hafs", "2.png"), "m2");
+            File.WriteAllText(Path.Combine(oldRoot, "teks", "id_indonesian", "1.json"), "{}");
+            File.WriteAllText(Path.Combine(oldRoot, "Husary_64kbps", "001001.mp3"), "a");
+            File.WriteAllText(Path.Combine(oldRoot, "English_Walk", "001001.mp3"), "v");
+            File.WriteAllText(Path.Combine(oldRoot, "test_5xx", "x.mp3"), "junk");
+            // root baru sudah punya mushaf/hafs (tidak boleh ditimpa)
+            File.WriteAllText(Path.Combine(newRoot, "mushaf", "hafs", "9.png"), "existing");
+
+            int moved = OfflineMigrator.Run(oldRoot, newRoot);
+            Check("migrasi memindahkan folder struktural + audio",
+                moved >= 3, $"moved={moved}");
+            Check("mushaf lama dipindah", File.Exists(Path.Combine(newRoot, "mushaf", "hafs", "1.png"))
+                && File.Exists(Path.Combine(newRoot, "mushaf", "hafs", "2.png"))
+                && !Directory.Exists(Path.Combine(oldRoot, "mushaf")));
+            Check("teks lama dipindah", File.Exists(Path.Combine(newRoot, "teks", "id_indonesian", "1.json")));
+            Check("folder qari → downloads/audio/", File.Exists(Path.Combine(newRoot, "audio", "Husary_64kbps", "001001.mp3")));
+            Check("folder voice → downloads/voice/", File.Exists(Path.Combine(newRoot, "voice", "English_Walk", "001001.mp3")));
+            Check("file existing di root baru TIDAK ditimpa, file lain tetap merge",
+                File.Exists(Path.Combine(newRoot, "mushaf", "hafs", "9.png"))
+                && File.Exists(Path.Combine(newRoot, "mushaf", "hafs", "1.png"))
+                && !Directory.Exists(Path.Combine(oldRoot, "mushaf")));
+            Check("folder test_ di-skip", File.Exists(Path.Combine(oldRoot, "test_5xx", "x.mp3")));
+
+            // idempotent: run lagi → tidak ada yang pindah
+            int moved2 = OfflineMigrator.Run(oldRoot, newRoot);
+            Check("migrasi idempotent (run kedua = 0)", moved2 == 0, $"moved2={moved2}");
+        }
+        finally
+        {
+            try { Directory.Delete(baseDir, true); } catch { }
         }
     }
 
@@ -310,7 +402,8 @@ public static class OfflineSelfTest
         {
             var sum = svc.ScanSurah(1, "key_ngawur",
                 Array.Empty<string>(), Array.Empty<string>(), Array.Empty<Reciter>());
-            Check("ScanSurah key tak dikenal fallback tanpa crash", sum.MushafPages >= 1);
+            Check("ScanSurah key tak dikenal fallback tanpa crash", sum.MushafPagesTotal >= 1,
+                $"total={sum.MushafPagesTotal}");
         }
         catch (Exception ex)
         {
@@ -676,7 +769,7 @@ public static class OfflineSelfTest
         var svc = OfflineContentService.Instance;
         Check("KsuAudio.CachePath tetap dipakai (root sama)",
             svc.CacheRoot == KsuAudio.CacheDir);
-        string legacyAudio = Path.Combine(KsuAudio.CacheDir, "Husary_64kbps");
+        string legacyAudio = Path.Combine(OfflineContentService.Instance.AudioDir, "Husary_64kbps");
         if (Directory.Exists(legacyAudio))
         {
             var st = svc.GetAudioStatus("Husary_64kbps", 1, 1);
@@ -687,6 +780,11 @@ public static class OfflineSelfTest
         else
         {
             Check("legacy audio tidak ada di mesin ini (skip)", true);
+        }
+        string oldLegacyAudio = Path.Combine(KsuAudio.LegacyCacheDir, "Husary_64kbps");
+        if (Directory.Exists(oldLegacyAudio))
+        {
+            Check("cache lama %LOCALAPPDATA% masih ada — migrator akan memindahkannya saat startup", true);
         }
         string legacyTeks = Path.Combine(svc.TeksDir);
         string legacyTrans = "id_indonesian";

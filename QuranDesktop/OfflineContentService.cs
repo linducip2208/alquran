@@ -58,7 +58,10 @@ public sealed class OfflineContentService
     public string TeksDir => Path.Combine(CacheRoot, "teks");
     public string TafsirDir => Path.Combine(CacheRoot, "tafsir");
     public string HilitesDir => Path.Combine(CacheRoot, "hilites");
-    public string AudioDir => CacheRoot;
+    /// <summary>downloads/audio — audio qari. Rel path: "audio/{folder}/001001.mp3".</summary>
+    public string AudioDir => KsuAudio.AudioRoot;
+    /// <summary>downloads/voice — voice translation. Rel path: "voice/{folder}/001001.mp3".</summary>
+    public string VoiceDir => KsuAudio.VoiceRoot;
 
     public int TotalAyat => QuranData.TotalAyahCount;
     public int TotalSurah => QuranData.SurahCount;
@@ -98,7 +101,10 @@ public sealed class OfflineContentService
     }
 
     public AudioFileStatus GetAudioStatus(string reciterFolder, int surah, int ayah)
-        => GetAudioStatus($"{reciterFolder}/{surah:D3}{ayah:D3}.mp3");
+        => GetAudioStatus($"audio/{reciterFolder}/{surah:D3}{ayah:D3}.mp3");
+
+    public AudioFileStatus GetVoiceStatus(string voiceFolder, int surah, int ayah)
+        => GetAudioStatus($"voice/{voiceFolder}/{surah:D3}{ayah:D3}.mp3");
 
     public AudioFileStatus GetMushafPageStatus(string mushafKey, int page)
         => _mushafCache.GetOrAdd($"{mushafKey}|{page}", _ => StatFile(Path.Combine(MushafDir, mushafKey, page + ".png"), 2048));
@@ -227,7 +233,7 @@ public sealed class OfflineContentService
         }
         foreach (var v in voices)
         {
-            st.VoiceTranslationAudio[v.Key] = GetAudioStatus(v.Folder, surah, ayah);
+            st.VoiceTranslationAudio[v.Key] = GetVoiceStatus(v.Folder, surah, ayah);
         }
         return st;
     }
@@ -372,19 +378,18 @@ public sealed class OfflineContentService
     public ReciterSummary ScanReciter(Reciter reciter)
         => ScanAudioFolder(reciter.Key, reciter.Folder, reciter.Display);
 
-    /// <summary>
-    /// Scan folder audio per ayat (qari maupun voice translation) — hitung dari file aktual di disk.
+    /// <summary>Scan folder audio per ayat — qari ("audio") maupun voice translation ("voice").
     /// CEPAT: satu Directory.EnumerateFiles per folder (bukan 6.236 FileInfo probe), plus
-    /// breakdown per surah ikut dihitung agar UI tidak perlu scan ulang saat klik qari.
-    /// </summary>
-    public ReciterSummary ScanAudioFolder(string key, string folder, string display)
+    /// breakdown per surah ikut dihitung agar UI tidak perlu scan ulang saat klik qari.</summary>
+    public ReciterSummary ScanAudioFolder(string key, string folder, string display, string subDir = "audio")
     {
         var perSurah = new int[TotalSurah + 1]; // index 1..114
         long bytes = 0;
         int valid = 0;
+        string baseDir = subDir == "voice" ? VoiceDir : AudioDir;
         try
         {
-            string dir = Path.Combine(AudioDir, folder);
+            string dir = Path.Combine(baseDir, folder);
             if (Directory.Exists(dir))
             {
                 foreach (var name in Directory.EnumerateFiles(dir, "*.mp3", SearchOption.TopDirectoryOnly))
@@ -503,7 +508,7 @@ public sealed class OfflineContentService
             }
             foreach (var v in VoiceTranslations.All)
             {
-                long b = DirSize(Path.Combine(AudioDir, v.Folder));
+                long b = DirSize(Path.Combine(VoiceDir, v.Folder));
                 if (b > 0) items.Add(new StorageItem($"Voice {v.Display}", b));
                 total += b;
             }
@@ -576,6 +581,15 @@ public sealed class OfflineContentService
         return n;
     }
 
+    public int DeleteVoiceAudio(string folder)
+    {
+        int n = DeleteDirIfExists(Path.Combine(VoiceDir, folder));
+        ClearReciterAudioCache();
+        _storageCache = null;
+        FireChanged();
+        return n;
+    }
+
     public int DeleteTarjama(string transKey)
     {
         int n = DeleteDirIfExists(Path.Combine(TeksDir, transKey));
@@ -626,12 +640,12 @@ public sealed class OfflineContentService
         int n = 0;
         foreach (var r in Reciters.All)
         {
-            string p = KsuAudio.CachePath(Path.Combine(r.Folder, $"{surah:D3}{ayah:D3}.mp3"));
+            string p = KsuAudio.CachePath($"audio/{r.Folder}/{surah:D3}{ayah:D3}.mp3");
             if (TryDelete(p)) n++;
         }
         foreach (var v in VoiceTranslations.All)
         {
-            string p = KsuAudio.CachePath(Path.Combine(v.Folder, $"{surah:D3}{ayah:D3}.mp3"));
+            string p = KsuAudio.CachePath($"voice/{v.Folder}/{surah:D3}{ayah:D3}.mp3");
             if (TryDelete(p)) n++;
         }
         foreach (var t in Translations.All)

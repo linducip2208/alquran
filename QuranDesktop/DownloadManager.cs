@@ -492,7 +492,8 @@ public sealed class DownloadManager
                     {
                         Label = $"Audio {s}:{a} ({folder})",
                         Kind = JobKind.File,
-                        Rel = $"{folder}/{s:D3}{a:D3}.mp3",
+                        // audio qari tersimpan di downloads/audio/{folder}/…
+                        Rel = $"audio/{folder}/{s:D3}{a:D3}.mp3",
                         Url = KsuAudio.AyahUrl(folder, s, a),
                     });
                 }

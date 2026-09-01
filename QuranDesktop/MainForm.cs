@@ -1822,15 +1822,18 @@ internal sealed class MainForm : Form
 
         string url = _playQueue.Dequeue();
         string rel = url.Substring(url.IndexOf("/ayat/mp3/", StringComparison.Ordinal) + "/ayat/mp3/".Length);
+        // qari tersimpan di downloads/audio/{folder}/…, voice translation di downloads/voice/{folder}/…
+        bool isVoice = VoiceTranslations.All.Any(v => v.Folder.Equals(rel.Split('/')[0], StringComparison.Ordinal));
+        string cacheRel = (isVoice ? "voice/" : "audio/") + rel;
 
         try
         {
-            var local = KsuAudio.CachePath(rel);
-            var st = OfflineContentService.Instance.GetAudioStatus(rel);
+            var local = KsuAudio.CachePath(cacheRel);
+            var st = OfflineContentService.Instance.GetAudioStatus(cacheRel);
             if (!st.IsValid)
             {
                 ShowStatus("Mengunduh audio…");
-                bool ok = await DownloadManager.Shared.EnsureFileAsync(ProgramServices.Http, url, rel,
+                bool ok = await DownloadManager.Shared.EnsureFileAsync(ProgramServices.Http, url, cacheRel,
                     _playCts?.Token ?? CancellationToken.None);
                 if (token != _playToken) return;
                 if (!ok)
