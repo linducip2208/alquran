@@ -1,7 +1,10 @@
-using System.Diagnostics;
-
 namespace QuranDesktop.Controls;
 
+/// <summary>
+/// (Z) Unduh halaman mushaf — memakai DownloadManager engine yang sama dengan seluruh aplikasi:
+/// HTTP → downloads/mushaf/{key}/{page}.png.part → validasi ukuran + signature PNG → atomic move.
+/// Halaman yang sudah valid dilewati tanpa request jaringan; resume otomatis dari .part.
+/// </summary>
 internal sealed class DownloadDialog : Form
 {
     private readonly ComboBox _cmbMushaf = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220, DropDownWidth = 240 };
@@ -89,76 +92,46 @@ internal sealed class DownloadDialog : Form
         _numFrom.Enabled = false;
         _numTo.Enabled = false;
         _btnCancel.Enabled = true;
-        _bar.Value = 0;
+        _bar.Style = ProgressBarStyle.Marquee;
+        _lblStatus.Text = "Menyiapkan daftar unduhan…";
 
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
 
-        int total = to - from + 1;
-        int done = 0, downloaded = 0, skipped = 0, failed = 0;
-        var failedPages = new List<int>();
-        var sw = Stopwatch.StartNew();
-
         try
         {
-            var semaphore = new SemaphoreSlim(4);
-            var tasks = new List<Task>();
-            for (int p = from; p <= to; p++)
+            // (Z) job list dibangun di background; unduhan via DownloadManager (satu engine untuk seluruh aplikasi)
+            var jobs = await Task.Run(() => Enumerable.Range(from, to - from + 1).Select(p => new DownloadManager.DownloadItem
             {
-                int page = p;
-                await semaphore.WaitAsync(ct);
-                tasks.Add(Task.Run(async () =>
-                {
-                    try
-                    {
-                        bool existed = File.Exists(Path.Combine(KsuAudio.CacheDir, "mushaf", mt.Key, page + ".png"));
-                        await KsuAudio.EnsureMushafPageAsync(mt.Key, page, ProgramServices.Http, ct);
-                        if (existed) Interlocked.Increment(ref skipped);
-                        else Interlocked.Increment(ref downloaded);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                    }
-                    catch
-                    {
-                        Interlocked.Increment(ref failed);
-                        lock (failedPages)
-                        {
-                            failedPages.Add(page);
-                        }
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                        int d = Interlocked.Increment(ref done);
-                        BeginInvoke(new Action(() =>
-                        {
-                            _bar.Value = Math.Min(100, d * 100 / total);
-                            _lblStatus.Text = $"Hal {page} — {d}/{total} (baru {downloaded}, ada {skipped}, gagal {failed})";
-                        }));
-                    }
-                }, ct));
-            }
-            await Task.WhenAll(tasks);
+                Label = $"Mushaf {mt.Display} hal {p}",
+                Kind = DownloadManager.JobKind.File,
+                Rel = $"mushaf/{mt.Key}/{p}.png",
+                Url = mt.ImageBase + p + ".png",
+                MinBytes = 2048,
+            }).ToList(), ct);
 
-            sw.Stop();
-            if (ct.IsCancellationRequested)
+            _bar.Style = ProgressBarStyle.Continuous;
+            var progress = new Progress<DownloadManager.DownloadProgress>(p =>
             {
-                _lblStatus.Text = $"Dibatalkan pada {done}/{total} (baru {downloaded}).";
-            }
-            else if (failed == 0)
-            {
-                _lblStatus.Text = $"Selesai! {downloaded} halaman baru diunduh, {skipped} sudah ada. ({sw.Elapsed.TotalSeconds:0} detik)";
-            }
-            else
-            {
-                var sample = string.Join(", ", failedPages.Take(8));
-                _lblStatus.Text = $"Selesai dengan {failed} gagal: hal {sample}… Coba ulangi rentang itu.";
-            }
+                _bar.Maximum = Math.Max(1, p.Total);
+                _bar.Value = Math.Min(_bar.Maximum, p.Done);
+                string file = p.CurrentFileTotal > 0
+                    ? $"  •  {Path.GetFileName(p.CurrentFileRel.Replace('\\', '/'))} {p.CurrentFileBytes * 100 / Math.Max(1, p.CurrentFileTotal)}%"
+                    : "";
+                _lblStatus.Text = $"{p.Done}/{p.Total} — baru {p.Downloaded}, ada {p.Skipped}, gagal {p.Failed}{file}  •  {p.Current}";
+            });
+
+            var res = await DownloadManager.Shared.RunAsync(jobs, progress, ct);
+            OfflineContentService.Instance.InvalidateAll();
+            _lblStatus.Text = res.Cancelled
+                ? $"Dibatalkan pada {res.Downloaded + res.Skipped + res.Failed}/{jobs.Count}. Jalankan lagi untuk melanjutkan (resume otomatis)."
+                : res.Failed == 0
+                    ? $"Selesai! {res.Downloaded} halaman baru diunduh, {res.Skipped} sudah ada."
+                    : $"Selesai dengan {res.Failed} gagal — ulangi rentang itu (resume otomatis).";
         }
         catch (OperationCanceledException)
         {
-            _lblStatus.Text = $"Dibatalkan pada {done}/{total}.";
+            _lblStatus.Text = "Dibatalkan.";
         }
         catch (Exception ex)
         {
@@ -172,6 +145,7 @@ internal sealed class DownloadDialog : Form
             _numFrom.Enabled = true;
             _numTo.Enabled = true;
             _btnCancel.Enabled = false;
+            _bar.Style = ProgressBarStyle.Continuous;
         }
     }
 }

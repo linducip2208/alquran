@@ -63,6 +63,8 @@ internal sealed class DownloadCenterDialog : Form
     };
 
     private readonly ProgressBar _bar = new() { Dock = DockStyle.Fill, Height = 20 };
+    /// <summary>(R) Progress bar kedua: byte file yang sedang diunduh.</summary>
+    private readonly ProgressBar _barFile = new() { Dock = DockStyle.Fill, Height = 12 };
     private readonly Label _lblProgress = new() { AutoSize = true, Text = "Siap." };
     private readonly Button _btnCancelJobs = new() { Text = "Batal", Width = 80, Enabled = false };
 
@@ -73,7 +75,10 @@ internal sealed class DownloadCenterDialog : Form
 
     private SurahOfflineSummary[] _surahRows = Array.Empty<SurahOfflineSummary>();
     private List<AyahRow> _filteredAyat = new();
+    /// <summary>(F) HANYA qari (Reciters.All — 43). Voice translation TIDAK masuk daftar ini.</summary>
     private List<ReciterSummary> _qariRows = new();
+    /// <summary>(J) Qari yang sudah discan — kolom "Scan" menampilkan ✓.</summary>
+    private readonly HashSet<string> _scanDone = new(StringComparer.Ordinal);
     private List<StorageItem> _storageRows = new();
     private (string Kind, string Key, string Display, string Folder)[] _delResources = Array.Empty<(string, string, string, string)>();
 
@@ -311,6 +316,10 @@ internal sealed class DownloadCenterDialog : Form
         profile.Controls.Add(profileRow, 0, 1);
         profile.SetColumnSpan(profileRow, 2);
 
+        // (E) profil unduhan WAJIB masuk layout — bug lama: panel dibuat tapi tidak pernah ditambahkan
+        layout.Controls.Add(profile, 0, 1);
+        layout.SetColumnSpan(profile, 2);
+
         var actions = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -332,7 +341,7 @@ internal sealed class DownloadCenterDialog : Form
         btnAll.Click += async (_, _) => await StartProfileAsync(full: true);
         btnFolder.Click += (_, _) => OpenFolder(OfflineContentService.Instance.CacheRoot);
         actions.Controls.AddRange(new Control[] { btnStart, btnScan, btnVerify, btnMissing, btnAll, btnFolder });
-        layout.Controls.Add(actions, 0, 1);
+        layout.Controls.Add(actions, 0, 2);
         layout.SetColumnSpan(actions, 2);
         var hint = new Label
         {
@@ -342,7 +351,7 @@ internal sealed class DownloadCenterDialog : Form
             ForeColor = Color.FromArgb(110, 110, 115),
             Padding = new Padding(10, 6, 10, 4),
         };
-        layout.Controls.Add(hint, 0, 2);
+        layout.Controls.Add(hint, 0, 3);
         layout.SetColumnSpan(hint, 2);
 
         page.Controls.Add(layout);
@@ -458,7 +467,7 @@ internal sealed class DownloadCenterDialog : Form
         {
             _cmbAyatSurah.Items.Add(new ComboItem($"{s.Number}. {s.EnglishName}", s.Number));
         }
-        foreach (var r in Reciters.All) _cmbAyatQari.Items.Add(new ComboItem(r.Display, r.Key));
+        foreach (var r in Reciters.All) _cmbAyatQari.Items.Add(new ComboItem(r.Display, r));
         foreach (var t in Translations.All.Where(t => t.Key != "ar_ayat" && t.Key != "ar_ayat_safy" && t.Key != "ar_mu" && t.Key != "ar_ma3any"))
         {
             _cmbAyatTrans.Items.Add(new ComboItem(t.Display, t.Key));
@@ -525,15 +534,20 @@ internal sealed class DownloadCenterDialog : Form
         var page = new TabPage("Qari");
         _gridQari.Columns.AddRange(new DataGridViewColumn[]
         {
-            Col("qari", "Qari", 30),
-            Col("downloaded", "Downloaded", 12),
-            Col("total", "Total", 9),
-            Col("missing", "Kurang", 9),
-            Col("progress", "Progress", 10),
-            Col("size", "Ukuran", 12),
-            Col("status", "Status", 14),
+            Col("qari", "Qari", 22),
+            Col("folder", "Folder", 15),
+            Col("downloaded", "Downloaded", 9),
+            Col("total", "Total", 8),
+            Col("missing", "Kurang", 8),
+            Col("progress", "Progress", 8),
+            Col("size", "Ukuran", 9),
+            Col("status", "Status", 12),
+            Col("scan", "Scan", 9),
         });
         _gridQari.SelectionChanged += (_, _) => { HighlightActiveQariRow(); FillQariSurahGrid(); };
+        // (L) klik baris qari = qari tersebut menjadi qari AKTIF (sinkron combo ayat + profil)
+        _gridQari.CellClick += (_, e) => { if (e.RowIndex >= 0) SelectQariAsActive(e.RowIndex); };
+        _gridQari.CellDoubleClick += (_, e) => { if (e.RowIndex >= 0) SelectQariAsActive(e.RowIndex); };
 
         _gridQariSurah.Columns.AddRange(new DataGridViewColumn[]
         {
@@ -566,12 +580,18 @@ internal sealed class DownloadCenterDialog : Form
         var btnActiveVerify = ActionButton("Verifikasi", 100);
         var btnActiveFolder = ActionButton("Buka Folder Qari", 140);
         var btnAllReciters = ActionButton("Unduh Semua Qari…", 150);
+        // (K) scan qari terpilih saja — bukan 42 qari lain
+        var btnScanThis = ActionButton("Scan Qari Ini", 130);
+        // (I) scan semua qari dengan progress live per qari
+        var btnScanAll = ActionButton("Scan Semua Qari", 150);
         btnActiveMissing.Click += async (_, _) => await DownloadReciterAsync(activeOnly: true, all: false);
         btnActiveAll.Click += async (_, _) => await DownloadReciterAsync(activeOnly: true, all: true);
         btnActiveVerify.Click += async (_, _) => { OfflineContentService.Instance.ClearReciterAudioCache(); await RefreshAllAsync(); };
         btnActiveFolder.Click += (_, _) => OpenFolder(Path.Combine(OfflineContentService.Instance.AudioDir, ActiveReciter().Folder));
         btnAllReciters.Click += async (_, _) => await DownloadAllRecitersAsync();
-        activeButtons.Controls.AddRange(new Control[] { btnActiveMissing, btnActiveAll, btnActiveVerify, btnActiveFolder, btnAllReciters });
+        btnScanThis.Click += async (_, _) => await ScanOneQariAsync();
+        btnScanAll.Click += async (_, _) => await ScanAllQarisLiveAsync();
+        activeButtons.Controls.AddRange(new Control[] { btnActiveMissing, btnActiveAll, btnActiveVerify, btnActiveFolder, btnAllReciters, btnScanThis, btnScanAll });
         activeTable.Controls.Add(activeButtons, 1, 0);
         activePanel.Controls.Add(activeTable);
 
@@ -610,8 +630,56 @@ internal sealed class DownloadCenterDialog : Form
     /// <summary>Qari aktif = qari terpilih di tab Ayat (fallback qari dari MainForm).</summary>
     private Reciter ActiveReciter()
     {
-        string key = _cmbAyatQari.SelectedItem is ComboItem ci ? (string)ci.Value! : _qareeKey;
-        return Reciters.Find(key) ?? Reciters.All[0];
+        // (D) value combo qari adalah Reciter — JANGAN cast ke string
+        if (_cmbAyatQari.SelectedItem is ComboItem ci && ci.Value is Reciter r)
+        {
+            return Reciters.Find(r.Key) ?? r;
+        }
+        return Reciters.Find(_qareeKey) ?? Reciters.All[0];
+    }
+
+    /// <summary>(D) Qari dari combo profil — value adalah Reciter, bukan string. Tidak pernah InvalidCastException.</summary>
+    private Reciter ProfileReciter()
+        => ResolveProfileReciter(_cmbProfileQari.SelectedItem as ComboItem, _qareeKey);
+
+    /// <summary>(D) Inti resolver qari profil — static agar bisa di-regression-test via selftest:
+    /// value combo WAJIB diperlakukan sebagai Reciter (bukan cast ke string).</summary>
+    internal static Reciter ResolveProfileReciter(ComboItem? selected, string fallbackKey)
+    {
+        if (selected != null && selected.Value is Reciter r)
+        {
+            return Reciters.Find(r.Key) ?? r;
+        }
+        return Reciters.Find(fallbackKey) ?? Reciters.All[0];
+    }
+
+    /// <summary>(L) Klik baris qari → qari itu menjadi AKTIF: sinkron combo tab Ayat & combo profil,
+    /// lalu refresh panel & grid per surah. Download berikutnya mengikuti qari ini.</summary>
+    private void SelectQariAsActive(int rowIndex)
+    {
+        if (rowIndex < 0 || rowIndex >= _qariView.Count) return;
+        var row = _qariView[rowIndex];
+        var rec = Reciters.Find(row.Key);
+        if (rec == null) return; // voice translation tidak bisa jadi qari aktif
+        for (int i = 0; i < _cmbAyatQari.Items.Count; i++)
+        {
+            if (_cmbAyatQari.Items[i] is ComboItem ci && ci.Value is Reciter r && r.Key == rec.Key)
+            {
+                if (_cmbAyatQari.SelectedIndex != i) _cmbAyatQari.SelectedIndex = i; // memicu UpdateQariActivePanel via event
+                else UpdateQariActivePanel();
+                break;
+        }
+        }
+        for (int i = 0; i < _cmbProfileQari.Items.Count; i++)
+        {
+            if (_cmbProfileQari.Items[i] is ComboItem ci && ci.Value is Reciter r && r.Key == rec.Key)
+            {
+                _cmbProfileQari.SelectedIndex = i;
+                break;
+            }
+        }
+        HighlightActiveQariRow();
+        FillQariSurahGrid();
     }
 
     private TabPage BuildTabStorage()
@@ -626,13 +694,25 @@ internal sealed class DownloadCenterDialog : Form
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Padding = new Padding(6) };
         var btnOpen = new Button { Text = "Buka Folder", Width = 110 };
         var btnClean = new Button { Text = "Bersihkan file .part", Width = 150 };
+        var btnCleanTemp = new Button { Text = "Bersihkan folder temp", Width = 160 };
         var btnDel = new Button { Text = "Hapus Resource Terpilih…", Width = 200 };
         var btnVerify = new Button { Text = "Verifikasi Semua", Width = 130 };
         btnOpen.Click += (_, _) => OpenFolder(OfflineContentService.Instance.CacheRoot);
         btnClean.Click += async (_, _) =>
         {
+            if (MessageBox.Show(this, "Hapus semua file .part (unduhan belum selesai)?",
+                    "Bersihkan .part", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             int n = OfflineContentService.Instance.CleanPartFiles();
             MessageBox.Show(this, $"{n} file .part dibersihkan.", "Bersihkan .part");
+            await RefreshStorageAsync();
+        };
+        // (AB) temp juga tetap di dalam aplikasi: downloads/temp/ — bukan %TEMP% Windows
+        btnCleanTemp.Click += async (_, _) =>
+        {
+            if (MessageBox.Show(this, "Hapus seluruh isi downloads/temp/?",
+                    "Bersihkan temp", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            int n = OfflineContentService.Instance.CleanTempDir();
+            MessageBox.Show(this, $"{n} file temp dibersihkan.", "Bersihkan temp");
             await RefreshStorageAsync();
         };
         btnDel.Click += async (_, _) => await DeleteResourceAsync();
@@ -642,7 +722,7 @@ internal sealed class DownloadCenterDialog : Form
             await RefreshAllAsync(deep: true);
             MessageBox.Show(this, "Verifikasi selesai — inventory dimuat ulang dari file aktual.", "Verifikasi");
         };
-        buttons.Controls.AddRange(new Control[] { btnOpen, btnClean, btnDel, btnVerify });
+        buttons.Controls.AddRange(new Control[] { btnOpen, btnClean, btnCleanTemp, btnDel, btnVerify });
 
         page.Controls.Add(_gridStorage);
         page.Controls.Add(buttons);
@@ -655,7 +735,7 @@ internal sealed class DownloadCenterDialog : Form
 
     private Control BottomPanel()
     {
-        var panel = new Panel { Dock = DockStyle.Fill, Height = 62, Padding = new Padding(10, 6, 10, 8), BackColor = Color.FromArgb(250, 250, 249) };
+        var panel = new Panel { Dock = DockStyle.Fill, Height = 78, Padding = new Padding(10, 6, 10, 8), BackColor = Color.FromArgb(250, 250, 249) };
         panel.Paint += (_, e) =>
         {
             using var pen = new Pen(Color.FromArgb(228, 228, 230));
@@ -663,19 +743,25 @@ internal sealed class DownloadCenterDialog : Form
         };
         _bar.Height = 18;
         _bar.Margin = new Padding(0, 4, 8, 2);
+        _barFile.Height = 10;
+        _barFile.Margin = new Padding(0, 0, 8, 2);
         _btnCancelJobs.Height = 28;
         _btnCancelJobs.Margin = new Padding(4, 0, 0, 0);
         _lblProgress.ForeColor = Color.FromArgb(70, 70, 75);
         _lblProgress.Margin = new Padding(1, 3, 0, 0);
         _lblProgress.AutoEllipsis = true;
-        var table = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
+        var table = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3 };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         table.Controls.Add(_bar, 0, 0);
         table.Controls.Add(_btnCancelJobs, 1, 0);
-        table.Controls.Add(_lblProgress, 0, 1);
+        // (R) progress bar file aktif — di bawah bar overall
+        table.Controls.Add(_barFile, 0, 1);
+        table.SetColumnSpan(_barFile, 2);
+        table.Controls.Add(_lblProgress, 0, 2);
         table.SetColumnSpan(_lblProgress, 2);
         _btnCancelJobs.Click += (_, _) => _jobCts?.Cancel();
         panel.Controls.Add(table);
@@ -721,9 +807,11 @@ internal sealed class DownloadCenterDialog : Form
     {
         string trans = _cmbAyatTrans.SelectedItem is ComboItem t ? (string)t.Value! : _transKey;
         string tafsir = _cmbAyatTafsir.SelectedItem is ComboItem tf ? (string)tf.Value! : _tafsirKey;
-        string qari = _cmbAyatQari.SelectedItem is ComboItem q ? (string)q.Value! : _qareeKey;
-        var rec = Reciters.Find(qari) ?? Reciters.All[0];
-        return (trans, tafsir, rec);
+        // (D) value combo qari = Reciter
+        var qari = _cmbAyatQari.SelectedItem is ComboItem q && q.Value is Reciter r
+            ? Reciters.Find(r.Key) ?? r
+            : Reciters.Find(_qareeKey) ?? Reciters.All[0];
+        return (trans, tafsir, qari);
     }
 
     private AyahRow? CurrentAyat()
@@ -745,6 +833,7 @@ internal sealed class DownloadCenterDialog : Form
             _lblProgress.Text = "Memindai konten offline…";
 
             var mushafTask = Task.Run(() => MushafTypes.All.Select(svc.ScanMushaf).ToList(), ct);
+            // (F) HANYA Reciters.All (43 qari) — VoiceTranslations BUKAN qari dan punya inventory sendiri
             var reciterTask = Task.Run(() =>
             {
                 var list = new List<ReciterSummary>();
@@ -752,11 +841,6 @@ internal sealed class DownloadCenterDialog : Form
                 {
                     ct.ThrowIfCancellationRequested();
                     list.Add(svc.ScanReciter(r));
-                }
-                foreach (var v in VoiceTranslations.All)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    list.Add(svc.ScanAudioFolder(v.Key, v.Folder, "Voice — " + v.Display, subDir: "voice"));
                 }
                 return list;
             }, ct);
@@ -812,7 +896,10 @@ internal sealed class DownloadCenterDialog : Form
             var surahs = surahTask.Result.List;
             var reciters = reciterTask.Result;
 
-            SetCard("card.mushaf", "Mushaf", $"{mushafs[0].Pages}/{mushafs[0].PagesTotal} halaman", mushafs[0].Pages == mushafs[0].PagesTotal);
+            // (V) card mushaf mengikuti mushaf AKTIF — bukan selalu mushafs[0]
+            var activeMushaf = mushafs.FirstOrDefault(x => x.Key == MushafTypes.ResolveMushaf(_mushafKey).Key) ?? mushafs[0];
+            SetCard("card.mushaf", "Mushaf", $"{activeMushaf.Display} — {activeMushaf.Pages}/{activeMushaf.PagesTotal} halaman",
+                activeMushaf.Pages == activeMushaf.PagesTotal);
             SetCard("card.hilite", "Hilite ayat", $"{hiliteTask.Result.Ok}/{hiliteTask.Result.Total} halaman", hiliteTask.Result.Ok == hiliteTask.Result.Total);
             SetCard("card.arab", "Teks Arab", $"{texts[0].AyatFound}/{texts[0].AyatTotal} ayat", texts[0].AyatFound == texts[0].AyatTotal);
             SetCard("card.trans", "Terjemahan aktif", $"{texts[1].AyatFound}/{texts[1].AyatTotal} ayat", texts[1].AyatFound == texts[1].AyatTotal);
@@ -822,27 +909,12 @@ internal sealed class DownloadCenterDialog : Form
             FillSurahGrid();
 
             _qariRows = reciters;
+            foreach (var r in reciters) _scanDone.Add(r.Key);
             FillQariGrid();
-            var active = reciters.FirstOrDefault(r => r.Key == ActiveReciter().Key);
-            if (active != null)
-            {
-                double pctA = active.Total <= 0 ? 0 : active.Valid * 100.0 / active.Total;
-                SetCard("card.audio", "Audio qari aktif",
-                    $"{Reciters.Find(active.Key)?.Display ?? active.Key}\n{Num(active.Valid)} / {Num(active.Total)} ayat — {pctA:0.00}%",
-                    active.Valid == active.Total);
-            }
-
-            // statistik qari tersimpan (semua qari, bukan hanya yang aktif)
-            int withDownloads = reciters.Count(x => x.Valid > 0);
-            int completeQ = reciters.Count(x => x.Total > 0 && x.Valid == x.Total);
-            int partialQ = reciters.Count(x => x.Valid > 0 && x.Total > 0 && x.Valid < x.Total);
-            int noneQ = reciters.Count - withDownloads;
-            SetCard("card.qari", "Qari tersimpan",
-                $"{withDownloads} / {reciters.Count} qari\nLengkap {completeQ} • Sebagian {partialQ} • Belum {noneQ}",
-                withDownloads == reciters.Count && reciters.Count > 0 ? true : withDownloads > 0 ? null : false);
+            UpdateQariCards();
 
             SetCard("card.storage", "Total storage", FormatSize(storage.TotalBytes), null);
-            SetCard("card.status", "Status", StatusSummaryText(surahs, mushafs[0], texts, surahTask.Result.Corrupt), null);
+            SetCard("card.status", "Status", StatusSummaryText(surahs, activeMushaf, texts, surahTask.Result.Corrupt), null);
             SetCard("card.hint", "Tips", "Buka tab Ayat untuk status per ayat (6.236 ayat). Klik baris untuk detail & tombol unduh per ayat.", null);
 
             FillStorageGrid(storage);
@@ -884,6 +956,26 @@ internal sealed class DownloadCenterDialog : Form
         bool any = surahs.Any(s => s.Partial || s.Complete) || mushaf.Pages > 0 || texts.Any(t => t.AyatFound > 0);
         if (!any) return "Belum diunduh";
         return corrupt ? "! Ada file rusak/tidak lengkap" : "Sebagian";
+    }
+
+    /// <summary>(AF) Card audio qari aktif + card qari tersimpan — SELALU basis 43 qari (tanpa voice).</summary>
+    private void UpdateQariCards()
+    {
+        var active = _qariRows.FirstOrDefault(r => r.Key == ActiveReciter().Key);
+        if (active != null)
+        {
+            double pctA = active.Total <= 0 ? 0 : active.Valid * 100.0 / active.Total;
+            SetCard("card.audio", "Audio qari aktif",
+                $"{Reciters.Find(active.Key)?.Display ?? active.Key}\n{Num(active.Valid)} / {Num(active.Total)} ayat — {pctA:0.00}% • {FormatSize(active.Bytes)}",
+                active.Valid == active.Total);
+        }
+        int withDownloads = _qariRows.Count(x => x.Valid > 0);
+        int completeQ = _qariRows.Count(x => x.Total > 0 && x.Valid == x.Total);
+        int partialQ = _qariRows.Count(x => x.Valid > 0 && x.Total > 0 && x.Valid < x.Total);
+        int noneQ = _qariRows.Count - withDownloads;
+        SetCard("card.qari", "Qari tersimpan",
+            $"{withDownloads} / {_qariRows.Count} qari\nLengkap {completeQ} • Sebagian {partialQ} • Belum {noneQ}",
+            withDownloads == _qariRows.Count && _qariRows.Count > 0 ? true : withDownloads > 0 ? null : false);
     }
 
     private void SetCard(string name, string title, string value, bool? ok)
@@ -1060,8 +1152,9 @@ internal sealed class DownloadCenterDialog : Form
     {
         var trans = _chkTrans.Checked ? new[] { _transKey } : Array.Empty<string>();
         var tafs = _chkTafsir.Checked ? new[] { _tafsirKey } : Array.Empty<string>();
-        string qari = _cmbProfileQari.SelectedItem is ComboItem q ? (string)q.Value! : _qareeKey;
-        var audio = _chkAudio.Checked ? new[] { (Reciters.Find(qari) ?? Reciters.All[0]).Folder } : Array.Empty<string>();
+        // (D) value combo qari = Reciter (bukan string) — jangan cast
+        var reciter = ProfileReciter();
+        var audio = _chkAudio.Checked ? new[] { reciter.Folder } : Array.Empty<string>();
         return new DownloadManager.DownloadScope
         {
             Mushaf = _chkMushaf.Checked,
@@ -1101,14 +1194,15 @@ internal sealed class DownloadCenterDialog : Form
             }
         }
         var scope = BuildActiveScope();
-        var jobs = DownloadManager.BuildJobs(scope);
-        await RunJobsAsync(jobs);
+        // (O) BuildJobs di background — daftar 6.236+ job tidak memblokir UI
+        await RunJobsAsync(async ct => await Task.Run(() => DownloadManager.BuildJobs(scope), ct));
     }
 
     private async Task DownloadMissingActiveAsync()
     {
         var scope = BuildActiveScope();
-        await RunJobsAsync(DownloadManager.BuildJobs(scope));
+        // (O) BuildJobs di background
+        await RunJobsAsync(async ct => await Task.Run(() => DownloadManager.BuildJobs(scope), ct));
     }
 
     /// <summary>
@@ -1144,7 +1238,7 @@ internal sealed class DownloadCenterDialog : Form
                 MushafKey = mk.Key,
                 Surahs = new[] { row.S },
             }));
-            await RunJobsAsync(items);
+            await RunJobsAsync(_ => Task.FromResult(items), new[] { qari });
             return;
         }
 
@@ -1197,7 +1291,7 @@ internal sealed class DownloadCenterDialog : Form
             MessageBox.Show(this, "Semua resource ayat ini sudah tersedia offline ✓", "Unduh ayat");
             return;
         }
-        await RunJobsAsync(items);
+        await RunJobsAsync(_ => Task.FromResult(items));
     }
 
     /// <summary>
@@ -1225,53 +1319,59 @@ internal sealed class DownloadCenterDialog : Form
         List<DownloadManager.DownloadItem> jobs;
         if (!all)
         {
-            // hanya file yang kurang — progress bar akurat
+            // hanya file yang kurang — progress bar akurat (cek status di background)
             var svc = OfflineContentService.Instance;
-            jobs = new List<DownloadManager.DownloadItem>();
-            for (int s = 1; s <= QuranData.SurahCount; s++)
+            jobs = await Task.Run(() =>
             {
-                int n = QuranData.SurahAyahCount(s);
-                for (int a = 1; a <= n; a++)
+                var list = new List<DownloadManager.DownloadItem>();
+                for (int s = 1; s <= QuranData.SurahCount; s++)
                 {
-                    if (!svc.GetAudioStatus(rec2.Folder, s, a).IsValid)
+                    int n = QuranData.SurahAyahCount(s);
+                    for (int a = 1; a <= n; a++)
                     {
-                        jobs.Add(new DownloadManager.DownloadItem
+                        if (!svc.GetAudioStatus(rec2.Folder, s, a).IsValid)
                         {
-                            Label = $"Audio {s}:{a} ({rec2.Display})",
-                            Kind = DownloadManager.JobKind.File,
-                            Rel = $"audio/{rec2.Folder}/{s:D3}{a:D3}.mp3",
-                            Url = KsuAudio.AyahUrl(rec2.Folder, s, a),
-                        });
+                            list.Add(new DownloadManager.DownloadItem
+                            {
+                                Label = $"Audio {s}:{a} ({rec2.Display})",
+                                Kind = DownloadManager.JobKind.File,
+                                Rel = $"audio/{rec2.Folder}/{s:D3}{a:D3}.mp3",
+                                Url = KsuAudio.AyahUrl(rec2.Folder, s, a),
+                            });
+                        }
                     }
                 }
-            }
+                return list;
+            }, CancellationToken.None);
         }
         else
         {
-            // scope SATU qari — bukan Reciters.All
-            jobs = DownloadManager.BuildJobs(new DownloadManager.DownloadScope
+            // scope SATU qari — bukan Reciters.All; (O) BuildJobs di background
+            jobs = await Task.Run(() => DownloadManager.BuildJobs(new DownloadManager.DownloadScope
             {
                 Mushaf = false, Hilites = false, Arab = false,
                 AudioFolders = new[] { rec2.Folder },
-            });
+            }), CancellationToken.None);
         }
-        if (jobs.Count == 0)
+        if (jobs.Count == 0 && all)
         {
             MessageBox.Show(this, $"Audio {rec2.Display} sudah lengkap ✓", "Unduh audio");
             return;
         }
-        await RunJobsAsync(jobs);
+        // (T) progress overall = ayat qari INI (6236), bukan gabungan semua qari
+        await RunJobsAsync(ct => Task.FromResult(jobs), new[] { rec2 });
     }
 
-    /// <summary>Unduh audio SEMUA qari — aksi besar, wajib konfirmasi eksplisit.</summary>
+    /// <summary>Unduh audio SEMUA qari — aksi besar, wajib konfirmasi eksplisit (U).</summary>
     private async Task DownloadAllRecitersAsync()
     {
-        int totalJobs = Reciters.All.Count * QuranData.TotalAyahCount;
+        int totalReciters = Reciters.All.Count;
+        long totalJobs = (long)totalReciters * QuranData.TotalAyahCount;
         long estBytes = _qariRows.Sum(r => r.Bytes);
-        long estMb = Math.Max(1, (long)((QuranData.TotalAyahCount * (double)Reciters.All.Count - estBytes / (1024.0 * 1024)) * 0.8));
         if (MessageBox.Show(this,
-                $"Unduh audio SEMUA {Reciters.All.Count} qari?\n\n" +
-                $"Job: ±{Num(totalJobs)} file audio (setiap qari {Num(QuranData.TotalAyahCount)} ayat).\n" +
+                $"Unduh audio SEMUA {totalReciters} qari?\n\n" +
+                $"• {totalReciters} qari × {Num(QuranData.TotalAyahCount)} ayat per qari\n" +
+                $"• Maksimum {Num((int)Math.Min(totalJobs, int.MaxValue))} file MP3\n" +
                 $"Perkiraan storage tambahan BESAR (puluhan GB, tergantung kualitas).\n" +
                 $"Sudah tersimpan: {FormatSize(estBytes)}.\n\nLanjutkan?",
                 "Konfirmasi Unduh Semua Qari", MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
@@ -1279,12 +1379,37 @@ internal sealed class DownloadCenterDialog : Form
         {
             return;
         }
-        var jobs = DownloadManager.BuildJobs(new DownloadManager.DownloadScope
+        // (O) daftar ±268 ribu job dibangun di background; (U) label diawali [i/43] per qari
+        await RunJobsAsync(async ct => await Task.Run(() =>
         {
-            Mushaf = false, Hilites = false, Arab = false,
-            AudioFolders = Reciters.All.Select(r => r.Folder).ToArray(),
-        });
-        await RunJobsAsync(jobs);
+            var jobs = new List<DownloadManager.DownloadItem>(totalJobs > int.MaxValue ? int.MaxValue : (int)totalJobs);
+            for (int i = 0; i < totalReciters; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var rec = Reciters.All[i];
+                var scopeJobs = DownloadManager.BuildJobs(new DownloadManager.DownloadScope
+                {
+                    Mushaf = false, Hilites = false, Arab = false,
+                    AudioFolders = new[] { rec.Folder },
+                });
+                string prefix = $"[{i + 1}/{totalReciters}] ";
+                foreach (var j in scopeJobs)
+                {
+                    jobs.Add(new DownloadManager.DownloadItem
+                    {
+                        Label = prefix + j.Label,
+                        Kind = j.Kind,
+                        Url = j.Url,
+                        Rel = j.Rel,
+                        TextKey = j.TextKey,
+                        Surah = j.Surah,
+                        Ayah = j.Ayah,
+                        MinBytes = j.MinBytes,
+                    });
+                }
+            }
+            return jobs;
+        }, ct), Reciters.All.ToList());
     }
 
     private async Task DeleteReciterAsync()
@@ -1397,8 +1522,9 @@ internal sealed class DownloadCenterDialog : Form
         foreach (var r in _qariView)
         {
             string progress = r.Total <= 0 ? "—" : $"{r.Valid * 100.0 / r.Total:0.00}%";
-            _gridQari.Rows.Add(r.Display, Num(r.Valid), Num(r.Total), Num(Math.Max(0, r.Total - r.Valid)),
-                progress, FormatSize(r.Bytes), QariStatusText(r));
+            // (J) kolom Folder + Scan: folder unik qari & status apakah sudah discan
+            _gridQari.Rows.Add(r.Display, r.Folder, Num(r.Valid), Num(r.Total), Num(Math.Max(0, r.Total - r.Valid)),
+                progress, FormatSize(r.Bytes), QariStatusText(r), _scanDone.Contains(r.Key) ? "✓" : "—");
         }
         _gridQari.ResumeLayout();
         HighlightActiveQariRow();
@@ -1435,7 +1561,9 @@ internal sealed class DownloadCenterDialog : Form
         int complete = _qariRows.Count(x => x.Total > 0 && x.Valid == x.Total);
         int partial = _qariRows.Count(x => x.Valid > 0 && x.Total > 0 && x.Valid < x.Total);
         int none = totalReciters - withDownloads;
-        _lblQariStats.Text = $"Qari dengan file tersimpan: {withDownloads} / {totalReciters}   •   Lengkap: {complete}   •   Sebagian: {partial}   •   Belum diunduh: {none}";
+        // (F) panel stats selalu basis Reciters.All (43) — tanpa voice translation
+        _lblQariStats.Text = $"Qari dengan file tersimpan: {withDownloads} / {totalReciters} (dari {Reciters.All.Count} qari)   •   Lengkap: {complete}   •   Sebagian: {partial}   •   Belum diunduh: {none}";
+        UpdateQariCards();
     }
 
     private void FillQariSurahGrid()
@@ -1471,14 +1599,171 @@ internal sealed class DownloadCenterDialog : Form
         return ok;
     }
 
+    /// <summary>(J) Update sel satu baris grid qari dari hasil scan.</summary>
+    private void UpdateQariRowCells(int rowIndex, ReciterSummary r, string scanStatus)
+    {
+        if (rowIndex < 0 || rowIndex >= _gridQari.Rows.Count) return;
+        var row = _gridQari.Rows[rowIndex];
+        row.Cells["qari"].Value = r.Display;
+        row.Cells["folder"].Value = r.Folder;
+        row.Cells["downloaded"].Value = Num(r.Valid);
+        row.Cells["total"].Value = Num(r.Total);
+        row.Cells["missing"].Value = Num(Math.Max(0, r.Total - r.Valid));
+        row.Cells["progress"].Value = r.Total <= 0 ? "—" : $"{r.Valid * 100.0 / r.Total:0.00}%";
+        row.Cells["size"].Value = FormatSize(r.Bytes);
+        row.Cells["status"].Value = QariStatusText(r);
+        row.Cells["scan"].Value = scanStatus;
+    }
+
+    /// <summary>(I) Scan SEMUA qari dengan progress live: grid berisi 43 baris sejak awal (status Menunggu),
+    /// lalu satu per satu dipindai — baris menampilkan "Memindai…", label menampilkan Qari i/43, file ditemukan,
+    /// valid, ukuran. Satu folder = satu enumeration; PerSurah ikut terisi (M).</summary>
+    private async Task ScanAllQarisLiveAsync()
+    {
+        if (_scanning || _running) return;
+        _scanning = true;
+        _scanCts = new CancellationTokenSource();
+        var ct = _scanCts.Token;
+        try
+        {
+            // prefill: 43 baris sesuai urutan Reciters.All — status awal "Menunggu"
+            _qariView = Reciters.All.Select(r =>
+                _qariRows.FirstOrDefault(x => x.Key == r.Key)
+                ?? new ReciterSummary(r.Key, r.Folder, r.Display, 0, QuranData.TotalAyahCount, 0, null)).ToList();
+            _gridQari.SuspendLayout();
+            _gridQari.Rows.Clear();
+            foreach (var r in _qariView)
+            {
+                string pct = r.Total <= 0 ? "—" : $"{r.Valid * 100.0 / r.Total:0.00}%";
+                _gridQari.Rows.Add(r.Display, r.Folder, Num(r.Valid), Num(r.Total), Num(Math.Max(0, r.Total - r.Valid)),
+                    pct, FormatSize(r.Bytes), "Menunggu", "…");
+            }
+            _gridQari.ResumeLayout();
+
+            var progress = new Progress<AudioFolderScanProgress>(p =>
+            {
+                int idx = p.Index - 1;
+                double pctAll = p.Total <= 0 ? 0 : Math.Max(0, p.Index - 1) * 100.0 / p.Total;
+                _lblProgress.Text = $"Memindai qari {Math.Min(p.Index, p.Total)} / {p.Total} ({pctAll:0.0}%) — {p.Display}"
+                    + $"  •  ditemukan {Num(p.FilesFound)}  •  valid {Num(p.ValidFiles)}  •  {FormatSize(p.Bytes)}";
+                if (idx >= 0 && idx < _gridQari.Rows.Count)
+                {
+                    var row = _gridQari.Rows[idx];
+                    row.Cells["size"].Value = FormatSize(p.Bytes);
+                    row.Cells["status"].Value = "Memindai…";
+                    row.Cells["scan"].Value = "…";
+                }
+            });
+
+            var svc = OfflineContentService.Instance;
+            int total = Reciters.All.Count;
+            for (int i = 0; i < total; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var rec = Reciters.All[i];
+                var sum = await Task.Run(() => svc.ScanReciter(rec, i + 1, total, progress, ct), ct);
+                _qariView[i] = sum;
+                int ri = _qariRows.FindIndex(r => r.Key == sum.Key);
+                if (ri >= 0) _qariRows[ri] = sum; else _qariRows.Add(sum);
+                _scanDone.Add(sum.Key);
+                UpdateQariRowCells(i, sum, "✓ Selesai");
+            }
+            HighlightActiveQariRow();
+            UpdateQariActivePanel();
+            _lblProgress.Text = $"Scan semua qari selesai — {total} qari.";
+        }
+        catch (OperationCanceledException)
+        {
+            _lblProgress.Text = "Scan qari dibatalkan.";
+        }
+        catch (Exception ex)
+        {
+            Program.Log(ex);
+            _lblProgress.Text = "Scan qari gagal: " + ex.Message;
+        }
+        finally
+        {
+            _scanning = false;
+        }
+    }
+
+    /// <summary>(K) Scan Qari Ini: hanya folder qari terpilih di grid — bukan 42 qari lain, mushaf, atau teks.</summary>
+    private async Task ScanOneQariAsync()
+    {
+        if (_scanning) return;
+        if (_gridQari.CurrentRow?.Index is not int idx || idx >= _qariView.Count)
+        {
+            MessageBox.Show(this, "Pilih qari terlebih dahulu.", "Scan Qari Ini");
+            return;
+        }
+        var target = _qariView[idx];
+        var rec = Reciters.Find(target.Key);
+        if (rec == null) return; // voice translation tidak discan di tab qari
+        _scanning = true;
+        _scanCts = new CancellationTokenSource();
+        var ct = _scanCts.Token;
+        try
+        {
+            _gridQari.Rows[idx].Cells["status"].Value = "Memindai…";
+            _gridQari.Rows[idx].Cells["scan"].Value = "…";
+            var progress = new Progress<AudioFolderScanProgress>(p =>
+            {
+                _lblProgress.Text = $"Memindai {p.Display}  •  ditemukan {Num(p.FilesFound)}  •  valid {Num(p.ValidFiles)}  •  {FormatSize(p.Bytes)}";
+                if (idx < _gridQari.Rows.Count)
+                {
+                    _gridQari.Rows[idx].Cells["size"].Value = FormatSize(p.Bytes);
+                }
+            });
+            var sum = await Task.Run(() => OfflineContentService.Instance.ScanReciter(rec, 1, 1, progress, ct), ct);
+            int ri = _qariRows.FindIndex(r => r.Key == sum.Key);
+            if (ri >= 0) _qariRows[ri] = sum; else _qariRows.Add(sum);
+            _qariView[idx] = sum;
+            _scanDone.Add(sum.Key);
+            UpdateQariRowCells(idx, sum, "✓");
+            HighlightActiveQariRow();
+            UpdateQariActivePanel();
+            _lblProgress.Text = $"Scan {rec.Display} selesai — {Num(sum.Valid)}/{Num(sum.Total)} ayat ({FormatSize(sum.Bytes)}).";
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Program.Log(ex);
+            _lblProgress.Text = "Scan gagal: " + ex.Message;
+        }
+        finally
+        {
+            _scanning = false;
+        }
+    }
+
+    /// <summary>(AG) Refresh TER-target setelah unduhan qari selesai — hanya qari yang diunduh
+    /// yang discan ulang. Bukan 43 qari + semua mushaf + teks (itu hanya untuk Scan Ulang/Verifikasi/startup).</summary>
+    private async Task TargetedReciterRefreshAsync(IReadOnlyList<Reciter> reciters)
+    {
+        var svc = OfflineContentService.Instance;
+        svc.ClearReciterAudioCache();
+        foreach (var rec in reciters)
+        {
+            var sum = await Task.Run(() => svc.ScanReciter(rec));
+            int ri = _qariRows.FindIndex(r => r.Key == sum.Key);
+            if (ri >= 0) _qariRows[ri] = sum; else _qariRows.Add(sum);
+            _scanDone.Add(sum.Key);
+        }
+        FillQariGrid();
+        UpdateQariActivePanel();
+        svc.InvalidateStorage();
+        var report = await Task.Run(() => svc.GetStorageAsync().GetAwaiter().GetResult());
+        FillStorageGrid(report);
+        _lblProgress.Text = "Inventory qari diperbarui (refresh ter-target).";
+    }
+
     private async Task RefreshStorageAsync()
     {
         var svc = OfflineContentService.Instance;
-        var report = await Task.Run(() =>
-        {
-            svc.InvalidateAll();
-            return svc.GetStorageAsync().GetAwaiter().GetResult();
-        });
+        svc.InvalidateStorage();
+        var report = await Task.Run(() => svc.GetStorageAsync().GetAwaiter().GetResult());
         FillStorageGrid(report);
         await RefreshAllAsync();
     }
@@ -1519,41 +1804,110 @@ internal sealed class DownloadCenterDialog : Form
 
     // ================= JOB RUNNER =================
 
-    private async Task RunJobsAsync(IEnumerable<DownloadManager.DownloadItem> jobs)
+    /// <summary>
+    /// (N/O) Jalankan unduhan: UI berubah &lt;300 ms ("Menyiapkan daftar unduhan…" + marquee + Batal enabled),
+    /// pembangunan daftar job dijalankan di background (Task.Run), progress live: overall 0/N sejak awal (P),
+    /// byte file aktif (Q/R), speed dari byte transfer aktual (S).
+    /// recitersTouched diisi → refresh ter-target hanya qari terkait (AG); null → refresh penuh.
+    /// </summary>
+    private async Task RunJobsAsync(
+        Func<CancellationToken, Task<List<DownloadManager.DownloadItem>>> jobsFactory,
+        IReadOnlyList<Reciter>? recitersTouched = null)
     {
         if (_running)
         {
             MessageBox.Show(this, "Masih ada unduhan yang berjalan.", "Unduhan");
             return;
         }
-        var list = jobs.ToList();
-        if (list.Count == 0)
-        {
-            MessageBox.Show(this, "Tidak ada item untuk diunduh — semuanya sudah tersedia ✓", "Unduhan");
-            return;
-        }
 
         _running = true;
         _btnCancelJobs.Enabled = true;
         _jobCts = new CancellationTokenSource();
+        var ct = _jobCts.Token;
+        _bar.Style = ProgressBarStyle.Marquee; // respons < 300 ms selama daftar disiapkan
+        _barFile.Value = 0;
+        _lblProgress.Text = "Menyiapkan daftar unduhan…";
+
+        List<DownloadManager.DownloadItem> list;
+        try
+        {
+            list = await jobsFactory(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            _lblProgress.Text = "Dibatalkan sebelum unduhan dimulai.";
+            _running = false;
+            _btnCancelJobs.Enabled = false;
+            _bar.Style = ProgressBarStyle.Continuous;
+            return;
+        }
+        catch (Exception ex)
+        {
+            _lblProgress.Text = "Gagal menyiapkan unduhan: " + ex.Message;
+            _running = false;
+            _btnCancelJobs.Enabled = false;
+            _bar.Style = ProgressBarStyle.Continuous;
+            return;
+        }
+        if (list.Count == 0)
+        {
+            MessageBox.Show(this, "Tidak ada item untuk diunduh — semuanya sudah tersedia ✓", "Unduhan");
+            _lblProgress.Text = "Tidak ada yang perlu diunduh — semuanya sudah tersedia ✓";
+            _running = false;
+            _btnCancelJobs.Enabled = false;
+            _bar.Style = ProgressBarStyle.Continuous;
+            return;
+        }
+
+        _bar.Style = ProgressBarStyle.Continuous;
         _bar.Value = 0;
 
         var progress = new Progress<DownloadManager.DownloadProgress>(p =>
         {
-            _bar.Maximum = Math.Max(1, p.Total);
-            _bar.Value = Math.Min(_bar.Maximum, p.Done);
-            double mbps = p.BytesPerSec / (1024.0 * 1024);
+            // (R) Overall: done/total + % — plus info file aktif (CurrentFileRel/Bytes/Total)
+            if (p.Total > 0)
+            {
+                _bar.Maximum = Math.Max(1, p.Total);
+                _bar.Value = Math.Min(_bar.Maximum, p.Done);
+            }
+            double opct = p.Total <= 0 ? 0 : p.Done * 100.0 / p.Total;
+            double mbps = p.BytesPerSec / (1024.0 * 1024.0);
+            string filePart = "";
+            if (p.CurrentFileTotal > 0)
+            {
+                double fpct = Math.Min(100.0, p.CurrentFileBytes * 100.0 / p.CurrentFileTotal);
+                _barFile.Maximum = 100;
+                _barFile.Value = Math.Clamp((int)fpct, 0, 100);
+                string fname = string.IsNullOrEmpty(p.CurrentFileRel)
+                    ? "-"
+                    : Path.GetFileName(p.CurrentFileRel.Replace('\\', '/'));
+                filePart = $"  •  File {fname}: {FormatSize(p.CurrentFileBytes)} / {FormatSize(p.CurrentFileTotal)} ({fpct:0}%)";
+            }
+            else
+            {
+                _barFile.Value = 0;
+            }
             _lblProgress.Text =
-                $"{p.Done}/{p.Total} — baru {p.Downloaded}, ada {p.Skipped}, gagal {p.Failed}  •  {p.Bytes / (1024.0 * 1024):0.0} MB  •  {mbps:0.00} MB/s"
+                $"Overall {p.Done}/{p.Total} ({opct:0.00}%) — baru {p.Downloaded}, ada {p.Skipped}, gagal {p.Failed}"
+                + filePart
+                + $"  •  {mbps:0.00} MB/s"
                 + (p.Eta > TimeSpan.Zero ? $"  •  ETA {p.Eta:hh\\:mm\\:ss}" : "")
                 + (p.Current.Length > 0 ? $"  •  {p.Current}" : "");
         });
 
         try
         {
-            var res = await DownloadManager.Shared.RunAsync(list, progress, _jobCts.Token);
-            OfflineContentService.Instance.InvalidateAll();
-            await RefreshAllAsync();
+            var res = await DownloadManager.Shared.RunAsync(list, progress, ct);
+            // (AG) targeted refresh untuk unduhan qari; refresh penuh untuk resource lain
+            if (recitersTouched is { Count: > 0 })
+            {
+                await TargetedReciterRefreshAsync(recitersTouched);
+            }
+            else
+            {
+                OfflineContentService.Instance.InvalidateAll();
+                await RefreshAllAsync();
+            }
             string msg = res.Cancelled
                 ? $"Dibatalkan pada {res.Downloaded + res.Skipped + res.Failed}/{list.Count}. Jalankan lagi untuk melanjutkan (resume otomatis)."
                 : res.Failed == 0
@@ -1574,6 +1928,8 @@ internal sealed class DownloadCenterDialog : Form
         {
             _running = false;
             _btnCancelJobs.Enabled = false;
+            _bar.Style = ProgressBarStyle.Continuous;
+            _barFile.Value = 0;
         }
     }
 }

@@ -386,6 +386,18 @@ public sealed class OfflineContentService
 
     // ============ SCAN: RECITER ============
 
+    /// <summary>(H) Parser nama file audio: {surah:D3}{ayah:D3} — TEPAT 6 digit (mis. 001001, 002283, 114006).
+    /// Nama 7 digit / non-digit / di luar range ditolak.</summary>
+    public static bool TryParseAyahFile(string? fileName, out int surah, out int ayah)
+    {
+        surah = 0;
+        ayah = 0;
+        if (string.IsNullOrEmpty(fileName) || fileName.Length != 6) return false;
+        if (!int.TryParse(fileName.AsSpan(0, 3), out surah)) return false;
+        if (!int.TryParse(fileName.AsSpan(3, 3), out ayah)) return false;
+        return surah >= 1 && surah <= 114 && ayah >= 1;
+    }
+
     public ReciterSummary ScanReciter(Reciter reciter)
         => ScanAudioFolder(reciter.Key, reciter.Folder, reciter.Display);
 
@@ -430,14 +442,11 @@ public sealed class OfflineContentService
                     if (!name.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)) continue;
                     found++;
                     // format nama: {surah:D3}{ayah:D3}.mp3 — 6 digit
-                    string file = Path.GetFileNameWithoutExtension(name);
-                    if (file.Length != 6
-                        || !int.TryParse(file.AsSpan(0, 3), out int s)
-                        || !int.TryParse(file.AsSpan(3, 3), out int a))
+                    if (!TryParseAyahFile(Path.GetFileNameWithoutExtension(name), out int s, out int a))
                     {
                         continue;
                     }
-                    if (s < 1 || s > TotalSurah || a < 1 || a > QuranData.SurahAyahCount(s))
+                    if (a > QuranData.SurahAyahCount(s))
                     {
                         continue;
                     }
@@ -550,6 +559,10 @@ public sealed class OfflineContentService
             long fb = DirSize(Path.Combine(CacheRoot, "fonts"));
             if (fb > 0) items.Add(new StorageItem("Font", fb));
             total += fb;
+            // (AB) folder temp di dalam downloads/ — terlihat di storage report
+            long tempBytes = DirSize(KsuAudio.TempDir);
+            if (tempBytes > 0) items.Add(new StorageItem("Folder temp (downloads/temp)", tempBytes));
+            total += tempBytes;
             foreach (var r in Reciters.All)
             {
                 long b = DirSize(Path.Combine(AudioDir, r.Folder));
@@ -712,6 +725,9 @@ public sealed class OfflineContentService
         return n;
     }
 
+    /// <summary>Reset storage cache agar laporan berikutnya dihitung ulang dari disk.</summary>
+    public void InvalidateStorage() => _storageCache = null;
+
     public int CleanPartFiles()
     {
         int n = 0;
@@ -722,6 +738,31 @@ public sealed class OfflineContentService
             foreach (var fi in root.EnumerateFiles("*.part", SearchOption.AllDirectories))
             {
                 if (TryDelete(fi.FullName)) n++;
+            }
+        }
+        catch
+        {
+        }
+        _storageCache = null;
+        FireChanged();
+        return n;
+    }
+
+    /// <summary>(AB) Bersihkan isi downloads/temp/ — file sementara di dalam aplikasi, bukan %TEMP%.</summary>
+    public int CleanTempDir()
+    {
+        int n = 0;
+        try
+        {
+            var dir = new DirectoryInfo(KsuAudio.TempDir);
+            if (!dir.Exists) return 0;
+            foreach (var fi in dir.EnumerateFiles("*", SearchOption.AllDirectories))
+            {
+                if (TryDelete(fi.FullName)) n++;
+            }
+            foreach (var di in dir.EnumerateDirectories("*", SearchOption.AllDirectories).OrderByDescending(d => d.FullName.Length))
+            {
+                try { if (di.GetFileSystemInfos().Length == 0) di.Delete(); } catch { }
             }
         }
         catch

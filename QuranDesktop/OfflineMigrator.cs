@@ -13,10 +13,35 @@ public static class OfflineMigrator
     /// <summary>Task migrasi yang sedang berjalan (null bila belum dimulai / sudah selesai tanpa start).</summary>
     public static Task? Current { get; private set; }
 
-    /// <summary>Mulai migrasi sekali di background. Aman dipanggil berkali-kali.</summary>
+    /// <summary>(B) Marker satu kali: setelah ada, %LOCALAPPDATA% TIDAK dipindai lagi di setiap startup.</summary>
+    public static string MarkerPath => Path.Combine(KsuAudio.DataRoot, ".migration-v1-complete");
+
+    public static bool MigrationComplete
+    {
+        get { try { return File.Exists(MarkerPath); } catch { return false; } }
+    }
+
+    private static void WriteMarker()
+    {
+        try
+        {
+            Directory.CreateDirectory(KsuAudio.DataRoot);
+            File.WriteAllText(MarkerPath, DateTime.UtcNow.ToString("O"));
+        }
+        catch
+        {
+        }
+    }
+
+    /// <summary>Mulai migrasi sekali di background. Aman dipanggil berkali-kali.
+    /// Bila marker sudah ada: TIDAK memindai %LOCALAPPDATA% sama sekali.</summary>
     public static void EnsureStarted()
     {
         if (Interlocked.Exchange(ref _started, 1) != 0)
+        {
+            return;
+        }
+        if (MigrationComplete)
         {
             return;
         }
@@ -31,16 +56,25 @@ public static class OfflineMigrator
     /// <summary>
     /// Jalankan migrasi (sinkron). Parameter dapat dioverride untuk unit test.
     /// Aturan: folder lama ada DAN root baru belum memiliki resource tersebut → pindahkan.
+    /// Hanya boleh MEMBACA cache lama — tidak pernah menulis ke %LOCALAPPDATA%.
+    /// Setelah selesai (sukses atau tidak ada data), marker dibuat agar startup berikutnya skip.
     /// </summary>
     public static int Run(string? oldRoot = null, string? newRoot = null)
     {
+        bool useDefaults = oldRoot == null && newRoot == null;
         oldRoot ??= KsuAudio.LegacyCacheDir;
         newRoot ??= KsuAudio.DataRoot;
+        if (useDefaults && MigrationComplete) return 0;
         int moved = 0;
 
         try
         {
-            if (!Directory.Exists(oldRoot)) return 0;
+            if (!Directory.Exists(oldRoot))
+            {
+                // tidak ada cache lama — langsung tandai selesai agar startup berikutnya tidak memindai lagi
+                if (useDefaults) WriteMarker();
+                return 0;
+            }
             Directory.CreateDirectory(newRoot);
 
             var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -77,6 +111,9 @@ public static class OfflineMigrator
                 if (!Directory.EnumerateFileSystemEntries(oldRoot).Any()) Directory.Delete(oldRoot);
             }
             catch { }
+
+            // (B) tandai migrasi selesai — startup berikutnya tidak memindai %LOCALAPPDATA% lagi
+            WriteMarker();
         }
         catch
         {

@@ -11,6 +11,20 @@ static class Program
             return;
         }
 
+        // (C) uji izin tulis root downloads — TANPA fallback ke AppData/TEMP
+        if (!KsuAudio.EnsureWritableRoot(out string permError))
+        {
+            ApplicationConfiguration.Initialize();
+            MessageBox.Show(
+                "Folder aplikasi tidak dapat ditulis.\n" +
+                "Pindahkan Quran Desktop ke folder yang memiliki izin tulis.\n\n" +
+                $"Lokasi: {KsuAudio.DataRoot}\nPenyebab: {permError}",
+                "Quran Desktop — Folder tidak dapat ditulis",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            Environment.ExitCode = 2;
+            return;
+        }
+
         // migrasi cache lama (%LOCALAPPDATA%) → downloads/ di samping exe, sekali di background
         OfflineMigrator.EnsureStarted();
 

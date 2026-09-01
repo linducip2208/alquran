@@ -4,7 +4,8 @@ namespace QuranDesktop.Controls;
 
 internal sealed class DownloadAllDialog : Form
 {
-    private readonly CheckBox _chkPages = new() { Text = "Halaman mushaf aktif (604 halaman)", AutoSize = true, Checked = true };
+    private readonly string _mushafKey;
+    private readonly CheckBox _chkPages = new() { Text = "Halaman mushaf aktif", AutoSize = true, Checked = true };
     private readonly CheckBox _chkText = new() { Text = "Teks Arab (Madinah) + terjemahan aktif (114 surah)", AutoSize = true, Checked = true };
     private readonly CheckBox _chkAudio = new() { Text = "Audio Al-Qur'an penuh untuk qari terpilih (6.236 ayat)", AutoSize = true };
     private readonly ComboBox _cmbQaree = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 250, DropDownWidth = 280 };
@@ -22,8 +23,9 @@ internal sealed class DownloadAllDialog : Form
     private CancellationTokenSource? _cts;
     private bool _running;
 
-    public DownloadAllDialog(string currentQareeKey, string activeTranslationKey)
+    public DownloadAllDialog(string currentQareeKey, string activeTranslationKey, string currentMushafKey = "hafs")
     {
+        _mushafKey = currentMushafKey;
         Text = "Unduh Semua — Quran Desktop";
         ClientSize = new Size(490, 250);
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -73,6 +75,10 @@ internal sealed class DownloadAllDialog : Form
         Controls.Add(_lblStatus);
 
         AcceptButton = _btnStart;
+        // (Y) label checkbox mengikuti mushaf aktif & counter QuranData — bukan hard-code 604/114/6236
+        _chkPages.Text = $"Halaman mushaf aktif ({MushafTypes.ResolveMushaf(_mushafKey).Display}, {QuranData.PageCount(MushafTypes.ResolvePageKey(_mushafKey))} halaman)";
+        _chkText.Text = $"Teks Arab (Madinah) + terjemahan aktif ({QuranData.SurahCount} surah)";
+        _chkAudio.Text = $"Audio Al-Qur'an penuh untuk qari terpilih ({QuranData.TotalAyahCount:N0} ayat)";
         _chkAudio.CheckedChanged += (_, _) => UpdateEstimate();
         _chkPages.CheckedChanged += (_, _) => UpdateEstimate();
         _chkText.CheckedChanged += (_, _) => UpdateEstimate();
@@ -93,10 +99,11 @@ internal sealed class DownloadAllDialog : Form
 
     private void UpdateEstimate()
     {
+        int pageCount = QuranData.PageCount(MushafTypes.ResolvePageKey(_mushafKey));
         double mb = 0;
         int files = 0;
-        if (_chkPages.Checked) { mb += 604 * 0.08; files += 604; }
-        if (_chkText.Checked) { mb += 228 * 0.01; files += 228; }
+        if (_chkPages.Checked) { mb += pageCount * 0.08; files += pageCount; }
+        if (_chkText.Checked) { mb += QuranData.SurahCount * 2 * 0.01; files += QuranData.SurahCount * 2; }
         if (_chkAudio.Checked)
         {
             var r = (Reciter)((ComboItem)_cmbQaree.SelectedItem!).Value!;
@@ -104,8 +111,8 @@ internal sealed class DownloadAllDialog : Form
                 : r.Folder.Contains("192", StringComparison.OrdinalIgnoreCase) ? 0.42
                 : r.Folder.Contains("64", StringComparison.OrdinalIgnoreCase) ? 0.14
                 : 0.10;
-            mb += 6236 * perFile;
-            files += 6236;
+            mb += QuranData.TotalAyahCount * perFile;
+            files += QuranData.TotalAyahCount;
         }
         _lblEstimate.Text = $"Estimasi: {files:N0} file • ±{mb:N0} MB. Yang sudah ada di cache dilewati.";
     }
@@ -115,41 +122,8 @@ internal sealed class DownloadAllDialog : Form
     private async Task StartAsync()
     {
         if (_running) return;
-        var mt = MushafTypes.All[0];
-
-        var jobs = new List<DownloadManager.DownloadItem>();
-        if (_chkPages.Checked)
-        {
-            for (int p = 1; p <= 604; p++)
-            {
-                jobs.Add(new DownloadManager.DownloadItem
-                {
-                    Label = $"Halaman {p}",
-                    Kind = DownloadManager.JobKind.File,
-                    Rel = $"mushaf/{mt.Key}/{p}.png",
-                    Url = mt.ImageBase + p + ".png",
-                    MinBytes = 2048,
-                });
-            }
-        }
-        if (_chkText.Checked)
-        {
-            for (int s = 1; s <= 114; s++)
-            {
-                jobs.Add(new DownloadManager.DownloadItem { Label = $"Teks Arab surah {s}", Kind = DownloadManager.JobKind.Tarjama, TextKey = "ar_ayat", Surah = s });
-                jobs.Add(new DownloadManager.DownloadItem { Label = $"Terjemahan surah {s}", Kind = DownloadManager.JobKind.Tarjama, TextKey = ProgramServices.ActiveTranslationKey ?? "id_indonesian", Surah = s });
-            }
-        }
-        if (_chkAudio.Checked)
-        {
-            var r = (Reciter)((ComboItem)_cmbQaree.SelectedItem!).Value!;
-            jobs.AddRange(DownloadManager.BuildJobs(new DownloadManager.DownloadScope
-            {
-                Mushaf = false, Hilites = false, Arab = false,
-                AudioFolders = new[] { r.Folder },
-            }));
-        }
-        if (jobs.Count == 0) return;
+        // (Y) mushaf AKTIF dari constructor — bukan selalu MushafTypes.All[0]
+        var mt = MushafTypes.ResolveMushaf(_mushafKey);
 
         _running = true;
         _btnStart.Enabled = false;
@@ -158,22 +132,68 @@ internal sealed class DownloadAllDialog : Form
         _chkAudio.Enabled = false;
         _cmbQaree.Enabled = false;
         _btnCancel.Enabled = true;
-        _bar.Maximum = jobs.Count;
-        _bar.Value = 0;
-
-        _cts = new CancellationTokenSource();
-        var ct = _cts.Token;
-        var sw = Stopwatch.StartNew();
-
-        var progress = new Progress<DownloadManager.DownloadProgress>(p =>
-        {
-            _bar.Maximum = Math.Max(1, p.Total);
-            _bar.Value = Math.Min(_bar.Maximum, p.Done);
-            _lblStatus.Text = $"{p.Done}/{p.Total} — baru {p.Downloaded}, ada {p.Skipped}, gagal {p.Failed}";
-        });
+        _bar.Style = ProgressBarStyle.Marquee;
+        _lblStatus.Text = "Menyiapkan daftar unduhan…";
 
         try
         {
+            var jobs = await Task.Run(() =>
+            {
+                var list = new List<DownloadManager.DownloadItem>();
+                int pageCount = QuranData.PageCount(mt.PageKey);
+                if (_chkPages.Checked)
+                {
+                    for (int p = 1; p <= pageCount; p++)
+                    {
+                        list.Add(new DownloadManager.DownloadItem
+                        {
+                            Label = $"Halaman {p}",
+                            Kind = DownloadManager.JobKind.File,
+                            Rel = $"mushaf/{mt.Key}/{p}.png",
+                            Url = mt.ImageBase + p + ".png",
+                            MinBytes = 2048,
+                        });
+                    }
+                }
+                if (_chkText.Checked)
+                {
+                    for (int s = 1; s <= QuranData.SurahCount; s++)
+                    {
+                        list.Add(new DownloadManager.DownloadItem { Label = $"Teks Arab surah {s}", Kind = DownloadManager.JobKind.Tarjama, TextKey = "ar_ayat", Surah = s });
+                        list.Add(new DownloadManager.DownloadItem { Label = $"Terjemahan surah {s}", Kind = DownloadManager.JobKind.Tarjama, TextKey = ProgramServices.ActiveTranslationKey ?? "id_indonesian", Surah = s });
+                    }
+                }
+                if (_chkAudio.Checked)
+                {
+                    var r = (Reciter)((ComboItem)_cmbQaree.SelectedItem!).Value!;
+                    list.AddRange(DownloadManager.BuildJobs(new DownloadManager.DownloadScope
+                    {
+                        Mushaf = false, Hilites = false, Arab = false,
+                        AudioFolders = new[] { r.Folder },
+                    }));
+                }
+                return list;
+            });
+            if (jobs.Count == 0)
+            {
+                _lblStatus.Text = "Tidak ada item untuk diunduh.";
+                return;
+            }
+            _bar.Style = ProgressBarStyle.Continuous;
+            _bar.Maximum = jobs.Count;
+            _bar.Value = 0;
+
+            _cts = new CancellationTokenSource();
+            var ct = _cts.Token;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+            var progress = new Progress<DownloadManager.DownloadProgress>(p =>
+            {
+                _bar.Maximum = Math.Max(1, p.Total);
+                _bar.Value = Math.Min(_bar.Maximum, p.Done);
+                _lblStatus.Text = $"{p.Done}/{p.Total} — baru {p.Downloaded}, ada {p.Skipped}, gagal {p.Failed}";
+            });
+
             var res = await DownloadManager.Shared.RunAsync(jobs, progress, ct);
             OfflineContentService.Instance.InvalidateAll();
             sw.Stop();
@@ -199,6 +219,7 @@ internal sealed class DownloadAllDialog : Form
             _chkAudio.Enabled = true;
             _cmbQaree.Enabled = true;
             _btnCancel.Enabled = false;
+            _bar.Style = ProgressBarStyle.Continuous;
         }
     }
 }

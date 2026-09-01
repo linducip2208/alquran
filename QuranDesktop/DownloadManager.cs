@@ -83,6 +83,10 @@ public sealed class DownloadManager
     {
         var list = items.ToList();
         int total = list.Count;
+
+        // (P) initial progress: 0/Total SEBELUM file pertama diproses — UI langsung tampil "Memulai unduhan…"
+        progress?.Report(new DownloadProgress(total, 0, 0, 0, 0, 0, 0, TimeSpan.Zero, "Memulai unduhan…"));
+
         int downloaded = 0, skipped = 0, failed = 0;
         long bytes = 0;
         var errors = new List<string>();
@@ -108,15 +112,19 @@ public sealed class DownloadManager
         string lastFileRel = "";
         long lastFileBytes = 0, lastFileTotal = 0;
 
+        // (S) byte transfer AKTUAL — increment per chunk saat download berjalan,
+        // bukan hanya setelah file selesai, agar speed live > 0 selama file besar.
+        long transferredBytes = 0;
+
         void Report(string current)
         {
             if (progress == null) return;
-            double speed = sw.Elapsed.TotalSeconds > 0.5 ? bytes / sw.Elapsed.TotalSeconds : 0;
+            double speed = sw.Elapsed.TotalSeconds > 0.5 ? Interlocked.Read(ref transferredBytes) / sw.Elapsed.TotalSeconds : 0;
             var eta = speed > 1 && totalDone > 0
                 ? TimeSpan.FromSeconds(Math.Max(0, total - totalDone) / Math.Max(1.0, totalDone / sw.Elapsed.TotalSeconds))
                 : TimeSpan.Zero;
-            progress.Report(new DownloadProgress(total, totalDone, downloaded, skipped, failed, bytes, speed, eta, current,
-                lastFileRel, lastFileBytes, lastFileTotal));
+            progress.Report(new DownloadProgress(total, totalDone, downloaded, skipped, failed, Interlocked.Read(ref transferredBytes), speed, eta, current,
+                lastFileRel, Interlocked.Read(ref lastFileBytes), lastFileTotal));
         }
 
         try
@@ -130,11 +138,15 @@ public sealed class DownloadManager
                     try
                     {
                         string current = item.Label;
-                        // progress byte per file — simpan sebagai "file aktif terakhir" (throttled di DownloadToFileAsync)
+                        // (Q) progress byte per file — simpan lalu REPORT langsung (throttled di DownloadToFileAsync)
+                        // (S) chunkCallback → transferredBytes naik per chunk agar speed live > 0
                         int outcome = await RunItemAsync(item, cancel.Token, _ => { }, (rel, done, totalBytes) =>
                         {
-                            lastFileRel = rel; lastFileBytes = done; lastFileTotal = totalBytes;
-                        });
+                            Interlocked.Exchange(ref lastFileRel, rel);
+                            Interlocked.Exchange(ref lastFileBytes, done);
+                            Interlocked.Exchange(ref lastFileTotal, totalBytes);
+                            Report(current);
+                        }, chunk => Interlocked.Add(ref transferredBytes, chunk));
                         switch (outcome)
                         {
                             case 0:
@@ -185,7 +197,7 @@ public sealed class DownloadManager
 
     /// <returns>0 = skipped (sudah valid), 1 = downloaded, -1 = gagal</returns>
     private async Task<int> RunItemAsync(DownloadItem item, CancellationToken ct, Action<string> status,
-        Action<string, long, long>? fileProgress = null)
+        Action<string, long, long>? fileProgress = null, Action<long>? chunkCallback = null)
     {
         switch (item.Kind)
         {
@@ -296,7 +308,7 @@ public sealed class DownloadManager
                     ct.ThrowIfCancellationRequested();
                     try
                     {
-                        await DownloadToFileAsync(ProgramServices.Http, url, dest, item.MinBytes, ct, rel, fileProgress);
+                        await DownloadToFileAsync(ProgramServices.Http, url, dest, item.MinBytes, ct, rel, fileProgress, chunkCallback);
                         return 1;
                     }
                     catch (OperationCanceledException) { throw; }
@@ -313,6 +325,25 @@ public sealed class DownloadManager
 
     private static string PartPath(string dest) => dest + ".part";
 
+    /// <summary>Validasi signature PNG: 89 50 4E 47 0D 0A 1A 0A — file korup/bukan PNG ditolak.</summary>
+    public static bool IsPngHeader(ReadOnlySpan<byte> b)
+        => b.Length >= 8 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47
+            && b[4] == 0x0D && b[5] == 0x0A && b[6] == 0x1A && b[7] == 0x0A;
+
+    public static bool HasPngSignature(string path)
+    {
+        try
+        {
+            using var fs = File.OpenRead(path);
+            Span<byte> buf = stackalloc byte[8];
+            return fs.Read(buf) == 8 && IsPngHeader(buf);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public static bool FileValid(string path, long minBytes)
     {
         try
@@ -325,6 +356,8 @@ public sealed class DownloadManager
                 using var doc = JsonDocument.Parse(fs);
                 return doc.RootElement.ValueKind == JsonValueKind.Object;
             }
+            // (X) PNG final harus punya signature valid — file korup dianggap tidak tersedia
+            if (fi.Extension == ".png") return HasPngSignature(path);
             return true;
         }
         catch
@@ -340,7 +373,8 @@ public sealed class DownloadManager
 
     private async Task<long> DownloadToFileAsync(
         HttpClient http, string url, string dest, long minBytes, CancellationToken ct,
-        string? relForProgress = null, Action<string, long, long>? fileProgress = null)
+        string? relForProgress = null, Action<string, long, long>? fileProgress = null,
+        Action<long>? chunkCallback = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
         string part = PartPath(dest);
@@ -368,6 +402,8 @@ public sealed class DownloadManager
             {
                 await dst.WriteAsync(buffer.AsMemory(0, read), cts.Token);
                 written += read;
+                // (S) byte transfer aktual — live speed bahkan saat file besar belum selesai
+                chunkCallback?.Invoke(read);
                 // progress byte per file — throttle ±100 ms agar tidak membanjiri UI
                 if (fileProgress != null && relForProgress != null
                     && progressSw.ElapsedMilliseconds >= 100)
@@ -398,6 +434,14 @@ public sealed class DownloadManager
                 TryDeletePart(dest);
                 throw new IOException("JSON tidak valid");
             }
+        }
+
+        // (X) PNG final harus punya header valid — .part korup dihapus agar tidak pernah jadi final
+        if (Path.GetExtension(dest).Equals(".png", StringComparison.OrdinalIgnoreCase)
+            && !HasPngSignature(part))
+        {
+            TryDeletePart(dest);
+            throw new IOException("PNG tidak valid (signature salah)");
         }
 
         File.Move(part, dest, overwrite: true);

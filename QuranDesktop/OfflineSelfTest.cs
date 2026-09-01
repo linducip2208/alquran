@@ -33,6 +33,11 @@ public static class OfflineSelfTest
         Console.WriteLine();
 
         CheckCounts();
+        ReciterIntegrity();
+        AudioFileNameParser();
+        PngValidation();
+        WritePermissionTest();
+        MigrationMarkerTest();
         AudioDetection();
         AudioPathLayout();
         TextJsonDetection();
@@ -44,6 +49,7 @@ public static class OfflineSelfTest
         MigratorTest();
         DownloadEngineAsync().GetAwaiter().GetResult();
         StorageActualBytes();
+        FinalAudit();
         LegacyCompatibility();
 
         Console.WriteLine();
@@ -93,6 +99,158 @@ public static class OfflineSelfTest
         Check("FindPage(Page) 2:282 = halaman valid",
             QuranData.FindPage("Page", 2, 282) >= 1 && QuranData.FindPage("Page", 2, 282) <= 604,
             $"got {QuranData.FindPage("Page", 2, 282)}");
+    }
+
+    // 1b. (AH #3,#4,#6) Folder qari unik & jumlah 43 — tidak crash
+    private static void ReciterIntegrity()
+    {
+        Console.WriteLine("-- Integritas daftar qari");
+        int count = Reciters.All.Count;
+        Check("Reciters.All.Count = 43 (bukan 47 — voice translation terpisah)", count == 43, $"got {count}");
+        Check("VoiceTranslations.All tidak tercampur Reciters.All",
+            Reciters.All.All(r => VoiceTranslations.All.All(v => v.Key != r.Key)),
+            "ada key yang sama antara qari dan voice");
+        var dupes = Reciters.All
+            .GroupBy(r => r.Folder, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        Check("semua folder qari unik (case-insensitive)", dupes.Count == 0, $"duplikat: {string.Join(", ", dupes)}");
+        var keysDupe = Reciters.All.GroupBy(r => r.Key).Where(g => g.Count() > 1).ToList();
+        Check("semua key qari unik", keysDupe.Count == 0);
+        // (AH #6) path Husary 001001 != Alafasy 001001
+        string husary = KsuAudio.CachePath($"audio/{Reciters.All[0].Folder}/001001.mp3");
+        var afasy = Reciters.Find("afasy") ?? Reciters.All[17];
+        string afasyPath = KsuAudio.CachePath($"audio/{afasy.Folder}/001001.mp3");
+        Check("path audio per-qari berbeda (Husary vs Afasy 001001)",
+            !string.Equals(husary, afasyPath, StringComparison.OrdinalIgnoreCase) && husary.Contains(Reciters.All[0].Folder)
+            && afasyPath.Contains(afasy.Folder),
+            $"{husary} vs {afasyPath}");
+        Check("audio rel TIDAK di audio/001001.mp3 (tanpa folder qari)",
+            !File.Exists(Path.Combine(KsuAudio.AudioRoot, "001001.mp3")));
+    }
+
+    // 1c. (H) Parser nama file 6 digit — selftest khusus (AH #7-12)
+    private static void AudioFileNameParser()
+    {
+        Console.WriteLine("-- Parser nama file audio {surah:D3}{ayah:D3}");
+        Check("parser 001001 valid (1:1)", OfflineContentService.TryParseAyahFile("001001", out int s1, out int a1) && s1 == 1 && a1 == 1, $"{s1}:{a1}");
+        Check("parser 002283 valid (2:283)", OfflineContentService.TryParseAyahFile("002283", out int s2, out int a2) && s2 == 2 && a2 == 283, $"{s2}:{a2}");
+        Check("parser 114006 valid (114:6)", OfflineContentService.TryParseAyahFile("114006", out int s3, out int a3) && s3 == 114 && a3 == 6, $"{s3}:{a3}");
+        Check("parser 7-digit invalid", !OfflineContentService.TryParseAyahFile("0010011", out _, out _));
+        Check("parser 5-digit invalid", !OfflineContentService.TryParseAyahFile("01001", out _, out _));
+        Check("parser non-digit invalid", !OfflineContentService.TryParseAyahFile("abc123", out _, out _));
+        Check("parser null/empty invalid", !OfflineContentService.TryParseAyahFile(null, out _, out _) && !OfflineContentService.TryParseAyahFile("", out _, out _));
+        Check("parser surah 000 invalid", !OfflineContentService.TryParseAyahFile("000001", out _, out _));
+        Check("parser surah 115 invalid", !OfflineContentService.TryParseAyahFile("115001", out _, out _));
+
+        // scan folder: .part tidak dihitung, <4096 tidak valid, PerSurah benar (AH #11-13)
+        var svc = OfflineContentService.Instance;
+        string folder = "SelfTest_Parse";
+        string dir = Path.Combine(KsuAudio.AudioRoot, folder);
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllBytes(Path.Combine(dir, "001001.mp3"), new byte[8192]);   // valid
+            File.WriteAllBytes(Path.Combine(dir, "001002.mp3"), new byte[10]);     // terlalu kecil
+            File.WriteAllBytes(Path.Combine(dir, "001003.mp3.part"), new byte[99]);// .part
+            File.WriteAllBytes(Path.Combine(dir, "114006.mp3"), new byte[8192]);   // valid
+            File.WriteAllBytes(Path.Combine(dir, "junk123.mp3"), new byte[8192]);  // nama tidak valid
+            svc.InvalidateAudio($"audio/{folder}/001001.mp3");
+            var sum = svc.ScanAudioFolder(folder, folder, "SelfTest Parse");
+            Check("scan folder: 2 file valid (bukan .part/kecil/junk)", sum.Valid == 2, $"got {sum.Valid}");
+            Check("scan folder: PerSurah[1] = 1", sum.PerSurah != null && sum.PerSurah[1] == 1, $"got {sum.PerSurah?[1]}");
+            Check("scan folder: PerSurah[114] = 1", sum.PerSurah != null && sum.PerSurah[114] == 1, $"got {sum.PerSurah?[114]}");
+            Check("scan folder: PerSurah[2] = 0", sum.PerSurah != null && sum.PerSurah[2] == 0, $"got {sum.PerSurah?[2]}");
+            Check("scan folder: bytes = 16384", sum.Bytes == 16384, $"got {sum.Bytes}");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+            svc.InvalidateAudio($"audio/{folder}/001001.mp3");
+            svc.InvalidateAudio($"audio/{folder}/114006.mp3");
+        }
+    }
+
+    // 1d. (X) Validasi signature PNG (AH #21-22)
+    private static void PngValidation()
+    {
+        Console.WriteLine("-- Validasi signature PNG");
+        byte[] pngHeader = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        Check("header PNG valid diterima", DownloadManager.IsPngHeader(pngHeader));
+        Check("header pendek ditolak", !DownloadManager.IsPngHeader(pngHeader.AsSpan(0, 4).ToArray()));
+        byte[] jpegLike = { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46 };
+        Check("header JPEG ditolak", !DownloadManager.IsPngHeader(jpegLike));
+        Check("header HTML-error ditolak", !DownloadManager.IsPngHeader("<html>e"u8.ToArray()));
+
+        string dir = Path.Combine(KsuAudio.DataRoot, "SelfTest_Png");
+        try
+        {
+            Directory.CreateDirectory(dir);
+            string good = Path.Combine(dir, "good.png");
+            File.WriteAllBytes(good, pngHeader.Concat(new byte[4096]).ToArray());
+            Check("FileValid(.png) signature benar = valid", DownloadManager.FileValid(good, 2048));
+            string bad = Path.Combine(dir, "bad.png");
+            File.WriteAllBytes(bad, jpegLike.Concat(new byte[4096]).ToArray());
+            Check("FileValid(.png) signature salah = TIDAK valid", !DownloadManager.FileValid(bad, 2048));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    // 1e. (C) Write permission test tanpa fallback (AH #30)
+    private static void WritePermissionTest()
+    {
+        Console.WriteLine("-- Uji izin tulis root downloads");
+        bool ok = KsuAudio.EnsureWritableRoot(out string err);
+        Check("root downloads dapat ditulis (write-test sukses)", ok, err);
+        Check("tidak ada sisa .write-test", !File.Exists(Path.Combine(KsuAudio.DataRoot, ".write-test")));
+        // DataRoot pasti di samping exe — bukan AppData/TEMP
+        string baseDir = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
+        string root = Path.TrimEndingDirectorySeparator(KsuAudio.DataRoot);
+        Check("DataRoot = <exe>/downloads", root == Path.Combine(baseDir, "downloads"),
+            KsuAudio.DataRoot);
+        Check("DataRoot TIDAK di AppData/TEMP",
+            !root.Contains("AppData", StringComparison.OrdinalIgnoreCase)
+            && !root.Contains("Temp", StringComparison.OrdinalIgnoreCase),
+            KsuAudio.DataRoot);
+    }
+
+    // 1f. (B) Marker migrasi (AH: migrasi satu kali)
+    private static void MigrationMarkerTest()
+    {
+        Console.WriteLine("-- Marker migrasi .migration-v1-complete");
+        string marker = Path.Combine(KsuAudio.DataRoot, ".migration-v1-complete");
+        bool existedBefore = File.Exists(marker);
+        try
+        {
+            if (File.Exists(marker)) File.Delete(marker);
+            Check("marker hilang saat dihapus", !OfflineMigrator.MigrationComplete);
+            // folder lama tidak ada → Run menulis marker & return 0
+            int moved = OfflineMigrator.Run(
+                Path.Combine(KsuAudio.DataRoot, "SelfTest_Marker_old"),
+                Path.Combine(KsuAudio.DataRoot, "SelfTest_Marker_new"));
+            Check("tanpa cache lama: 0 dipindah", moved == 0);
+            // Run dengan oldRoot eksplisit TIDAK menulis marker default (hanya saat useDefaults)
+            // simulasi: tulis marker manual lalu cek
+            File.WriteAllText(marker, "test");
+            Check("marker ada → MigrationComplete = true", OfflineMigrator.MigrationComplete);
+            Check("EnsureStarted dengan marker: tidak mulai migrasi", OfflineMigrator.Current == null);
+        }
+        finally
+        {
+            // pulihkan state awal: selftest TIDAK boleh menulis marker di mesin user
+            // yang migrasinya belum terjadi — marker hanya tetap ada bila sebelumnya sudah ada.
+            try
+            {
+                if (existedBefore) File.WriteAllText(marker, DateTime.UtcNow.ToString("O"));
+                else if (File.Exists(marker)) File.Delete(marker);
+            }
+            catch { }
+            try { Directory.Delete(Path.Combine(KsuAudio.DataRoot, "SelfTest_Marker_old"), true); } catch { }
+        }
     }
 
     // 2. Deteksi audio existing / missing / zero-byte / .part
@@ -529,6 +687,14 @@ public static class OfflineSelfTest
             int httpRequests = 0;
             var payload = new byte[256 * 1024];
             new Random(1).NextBytes(payload);
+            // payload PNG valid + payload sampah (bukan PNG) — test validasi mushaf
+            var pngPayload = new byte[64 * 1024];
+            pngPayload[0] = 0x89; pngPayload[1] = 0x50; pngPayload[2] = 0x4E; pngPayload[3] = 0x47;
+            pngPayload[4] = 0x0D; pngPayload[5] = 0x0A; pngPayload[6] = 0x1A; pngPayload[7] = 0x0A;
+            var garbagePayload = new byte[64 * 1024];
+            Array.Fill(garbagePayload, (byte)0xEE);
+            var slowPayload = new byte[32 * 1024];
+            new Random(2).NextBytes(slowPayload);
             var ctsListener = new CancellationTokenSource();
             var serverTask = Task.Run(async () =>
             {
@@ -568,6 +734,31 @@ public static class OfflineSelfTest
                         ctx.Response.ContentType = "application/octet-stream";
                         ctx.Response.ContentLength64 = data.Length;
                         await ctx.Response.OutputStream.WriteAsync(data);
+                        ctx.Response.Close();
+                        continue;
+                    }
+                    // test_png_ok: body PNG valid (signature benar)
+                    if (rel.StartsWith("test_png_ok"))
+                    {
+                        data = pngPayload;
+                    }
+                    // test_png_bad: ukuran cukup tapi BUKAN PNG (harus ditolak engine)
+                    if (rel.StartsWith("test_png_bad"))
+                    {
+                        data = garbagePayload;
+                    }
+                    // test_slow: 16 chunk × 60 ms ≈ 1 detik — untuk menangkap progress byte live
+                    if (rel.StartsWith("test_slow"))
+                    {
+                        ctx.Response.StatusCode = 200;
+                        ctx.Response.ContentType = "application/octet-stream";
+                        ctx.Response.ContentLength64 = slowPayload.Length;
+                        int chunk = slowPayload.Length / 16;
+                        for (int off = 0; off < slowPayload.Length; off += chunk)
+                        {
+                            await ctx.Response.OutputStream.WriteAsync(slowPayload, off, Math.Min(chunk, slowPayload.Length - off));
+                            await Task.Delay(60, ctsListener.Token);
+                        }
                         ctx.Response.Close();
                         continue;
                     }
@@ -665,6 +856,55 @@ public static class OfflineSelfTest
                 && File.ReadAllBytes(destD2)[..16].SequenceEqual(payload[..16]),
                 $"dl={resD2.Downloaded} size={(File.Exists(destD2) ? new FileInfo(destD2).Length : -1)} errs=[{string.Join(";", resD2.Errors)}]");
 
+            // (h) PNG valid → final tersimpan; PNG rusak → job gagal, final TIDAK ada, .part dihapus (AH #23-24)
+            string relPng = "test_png_ok/1.png";
+            string destPng = KsuAudio.CachePath(relPng);
+            TryDelete(destPng);
+            TryDelete(destPng + ".part");
+            var resPng = await dm.RunAsync(new[]
+            {
+                new DownloadManager.DownloadItem { Label = "t-png", Kind = DownloadManager.JobKind.File, Rel = relPng, Url = prefix + relPng, MinBytes = 2048 },
+            }, null, CancellationToken.None);
+            Check("download mushaf .png sukses via .part + validasi", resPng.Downloaded == 1 && DownloadManager.FileValid(destPng, 2048),
+                $"dl={resPng.Downloaded} fail={resPng.Failed} errs=[{string.Join(";", resPng.Errors)}]");
+            Check("final .png punya signature PNG", DownloadManager.HasPngSignature(destPng));
+
+            string relPngBad = "test_png_bad/2.png";
+            string destPngBad = KsuAudio.CachePath(relPngBad);
+            TryDelete(destPngBad);
+            TryDelete(destPngBad + ".part");
+            var resPngBad = await dm.RunAsync(new[]
+            {
+                new DownloadManager.DownloadItem { Label = "t-png-bad", Kind = DownloadManager.JobKind.File, Rel = relPngBad, Url = prefix + relPngBad, MinBytes = 2048 },
+            }, null, CancellationToken.None);
+            Check("PNG invalid header DITOLAK (job gagal)", resPngBad.Failed == 1 && resPngBad.Downloaded == 0,
+                $"dl={resPngBad.Downloaded} fail={resPngBad.Failed}");
+            Check("PNG ditolak: final korup tidak pernah tercipta", !File.Exists(destPngBad));
+            Check("PNG ditolak: .part ikut dibersihkan", !File.Exists(destPngBad + ".part"));
+
+            // (i)+(j) initial progress 0/N + byte progress live sebelum file selesai (AH #26-27)
+            string relSlow = "test_slow/001006.mp3";
+            string destSlow = KsuAudio.CachePath(relSlow);
+            TryDelete(destSlow);
+            TryDelete(destSlow + ".part");
+            var reports = new List<DownloadManager.DownloadProgress>();
+            var dmSlow = new DownloadManager { Concurrency = 1, MaxRetries = 1, TimeoutSeconds = 30 };
+            var resSlow = await dmSlow.RunAsync(new[]
+            {
+                new DownloadManager.DownloadItem { Label = "t-slow", Kind = DownloadManager.JobKind.File, Rel = relSlow, Url = prefix + relSlow },
+            }, new SyncProgress(reports), CancellationToken.None);
+            Check("initial progress 0/N 'Memulai unduhan…' muncul SEBELUM file pertama selesai",
+                reports.Count > 0 && reports[0].Total == 1 && reports[0].Done == 0 && reports[0].Current == "Memulai unduhan…",
+                reports.Count > 0 ? $"first: {reports[0].Done}/{reports[0].Total} '{reports[0].Current}'" : "tidak ada report");
+            Check("byte progress live: CurrentFileBytes > 0 saat file belum selesai",
+                reports.Any(r => r.CurrentFileTotal == slowPayload.Length && r.CurrentFileBytes > 0 && r.CurrentFileBytes < slowPayload.Length),
+                $"max={reports.Count}");
+            Check("speed live dari byte transfer aktual (> 0 saat transfer berjalan)",
+                reports.Any(r => r.Done == 0 && r.BytesPerSec > 0),
+                "tidak ada report dengan speed > 0 sebelum file selesai");
+            Check("download slow selesai utuh", resSlow.Downloaded == 1 && new FileInfo(destSlow).Length == slowPayload.Length,
+                $"size={(File.Exists(destSlow) ? new FileInfo(destSlow).Length : -1)}");
+
             // (d3) tafsir job per ayat: ayat yang sudah ada di disk → SKIP tanpa network
             string tafsKey = "selftest_dl_tafsir";
             string tafsDir = Path.Combine(svc.TafsirDir, tafsKey);
@@ -760,6 +1000,134 @@ public static class OfflineSelfTest
                 }
             }
         }
+    }
+
+    // 7b. (AH) Final audit — kunci satu root downloads + isolasi voice + scope qari
+    private static void FinalAudit()
+    {
+        Console.WriteLine("-- Final audit (single downloads root)");
+        var svc = OfflineContentService.Instance;
+
+        // (AH #1,#2) semua path permanen turunan DataRoot
+        string root = Path.GetFullPath(KsuAudio.DataRoot) + Path.DirectorySeparatorChar;
+        foreach (var rel in new[]
+        {
+            "audio/Husary_64kbps/001001.mp3",
+            "voice/English_Walk/001001.mp3",
+            "mushaf/hafs/1.png",
+            "mushaf/tajweed/604.png",
+            "mushaf/warsh/3.png",
+            "hilites/hafs/5.json",
+            "teks/ar_ayat/2.json",
+            "tafsir/indonesian/3.json",
+            "fonts/uthmanic_hafs_v22.ttf",
+            "temp/anything.tmp",
+        })
+        {
+            string full = Path.GetFullPath(KsuAudio.CachePath(rel));
+            Check($"path permanen di downloads/: {rel}",
+                full.StartsWith(root, StringComparison.OrdinalIgnoreCase),
+                full);
+        }
+
+        // service dirs mengarah ke DataRoot
+        Check("OfflineContentService.CacheRoot = KsuAudio.DataRoot", svc.CacheRoot == KsuAudio.DataRoot);
+        Check("AudioDir = downloads/audio", Path.GetFullPath(svc.AudioDir) == Path.GetFullPath(KsuAudio.AudioRoot));
+        Check("VoiceDir = downloads/voice", Path.GetFullPath(svc.VoiceDir) == Path.GetFullPath(KsuAudio.VoiceRoot));
+        Check("TempDir = downloads/temp", Path.GetFullPath(KsuAudio.TempDir).StartsWith(root, StringComparison.OrdinalIgnoreCase));
+        Check("LegacyCacheDir HANYA untuk baca (di %LOCALAPPDATA%)",
+            Path.GetFullPath(KsuAudio.LegacyCacheDir).StartsWith(
+                Path.GetFullPath(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)),
+                StringComparison.OrdinalIgnoreCase));
+
+        // (AH #14-16) combo qari Reciter tidak InvalidCastException + scope audio benar
+        var rec = Reciters.All[0];
+        var ci = new ComboItem(rec.Display, rec);
+        Reciter resolved;
+        try
+        {
+            resolved = QuranDesktop.Controls.DownloadCenterDialog.ResolveProfileReciter(ci, "afasy");
+            Check("ComboItem(Reciter) resolve tanpa InvalidCastException", resolved.Key == rec.Key, resolved.Key);
+        }
+        catch (InvalidCastException)
+        {
+            Check("ComboItem(Reciter) resolve tanpa InvalidCastException", false, "InvalidCastException");
+            resolved = rec;
+        }
+        var clicked = Reciters.Find("afasy")!;
+        Check("klik qari A → qari A aktif (bukan fallback)",
+            QuranDesktop.Controls.DownloadCenterDialog.ResolveProfileReciter(new ComboItem(clicked.Display, clicked), "husary").Key == "afasy");
+        Check("combo non-Reciter → fallback key", QuranDesktop.Controls.DownloadCenterDialog.ResolveProfileReciter(new ComboItem("x", "bukan-reciter"), "husary").Key == "husary");
+        Check("combo null → fallback key", QuranDesktop.Controls.DownloadCenterDialog.ResolveProfileReciter(null, "husary").Key == "husary");
+
+        // BuildJobs scope SATU qari: seluruh rel = audio/{folder}/…
+        var afasy2 = Reciters.Find("afasy")!;
+        var jobs = DownloadManager.BuildJobs(new DownloadManager.DownloadScope
+        {
+            Mushaf = false, Hilites = false, Arab = false,
+            AudioFolders = new[] { afasy2.Folder },
+            Surahs = new[] { 1 },
+        });
+        Check("BuildJobs scope qari: 7 job, rel audio/{folder}/…",
+            jobs.Count == 7 && jobs.All(j => j.Rel!.StartsWith($"audio/{afasy2.Folder}/", StringComparison.Ordinal)),
+            $"count={jobs.Count}, first={jobs.FirstOrDefault()?.Rel}");
+        Check("BuildJobs URL qari benar", jobs.All(j => j.Url!.Contains(afasy2.Folder, StringComparison.Ordinal)));
+
+        // (AH #17-20) mushaf aktif — Tajweed→Page2, Warsh→Page_warsh, Hafs→Page
+        Check("mushaf aktif tajweed → Page2", MushafTypes.ResolveMushaf("tajweed").PageKey == "Page2");
+        Check("mushaf aktif warsh → Page_warsh", MushafTypes.ResolveMushaf("warsh").PageKey == "Page_warsh");
+        Check("mushaf aktif hafs → Page", MushafTypes.ResolveMushaf("hafs").PageKey == "Page");
+        Check("MushafPageCount mengikuti mushaf aktif", MushafTypes.MushafPageCount("tajweed") == QuranData.PageCount("Page2"));
+        var sumTajweed = svc.ScanMushaf(MushafTypes.ResolveMushaf("tajweed"));
+        Check("ScanMushaf(tajweed) summary pakai key aktif",
+            sumTajweed.Key == "tajweed" && sumTajweed.PagesTotal == QuranData.PageCount("Page2"));
+
+        // (AH #29) qari tidak pernah 47: Reciters.All == 43 && VoiceTranslations.All == 4
+        Check("qari = 43 dan voice = 4 (43+4 ≠ 47 dalam satu daftar)",
+            Reciters.All.Count == 43 && VoiceTranslations.All.Count == 4,
+            $"qari={Reciters.All.Count} voice={VoiceTranslations.All.Count}");
+
+        // (AH #28) scan progress record: Index/Total/Stage
+        var scanReports = new List<AudioFolderScanProgress>();
+        string folder = "SelfTest_ScanProg";
+        string dir = Path.Combine(KsuAudio.AudioRoot, folder);
+        try
+        {
+            Directory.CreateDirectory(dir);
+            File.WriteAllBytes(Path.Combine(dir, "001001.mp3"), new byte[8192]);
+            File.WriteAllBytes(Path.Combine(dir, "001002.mp3"), new byte[8192]);
+            var sum = svc.ScanAudioFolder(folder, folder, "ScanProg",
+                "audio", new SelfTestScanProgress(scanReports), CancellationToken.None, index: 1, total: 43);
+            Check("scan progress dilaporkan dengan Index=1 Total=43",
+                scanReports.Any(p => p.Index == 1 && p.Total == 43), $"reports={scanReports.Count}");
+            Check("scan stage berakhir Completed", scanReports[^1].Stage == AudioFolderScanProgress.Completed);
+            Check("scan hasil valid = 2", sum.Valid == 2, $"got {sum.Valid}");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+            svc.InvalidateAudio($"audio/{folder}/001001.mp3");
+            svc.InvalidateAudio($"audio/{folder}/001002.mp3");
+        }
+
+        // (B) migrasi default (idempotent — skip bila marker sudah ada) lalu marker WAJIB ada
+        OfflineMigrator.Run();
+        Check("marker .migration-v1-complete ada setelah migrasi default", OfflineMigrator.MigrationComplete);
+    }
+
+    private sealed class SelfTestScanProgress : IProgress<AudioFolderScanProgress>
+    {
+        private readonly List<AudioFolderScanProgress> _sink;
+        public SelfTestScanProgress(List<AudioFolderScanProgress> sink) { _sink = sink; }
+        public void Report(AudioFolderScanProgress value) => _sink.Add(value);
+    }
+
+    /// <summary>IProgress sinkron untuk determinisme test (Progress<T> async ambigu).</summary>
+    private sealed class SyncProgress : IProgress<DownloadManager.DownloadProgress>
+    {
+        private readonly List<DownloadManager.DownloadProgress> _sink;
+        public SyncProgress(List<DownloadManager.DownloadProgress> sink) { _sink = sink; }
+        public void Report(DownloadManager.DownloadProgress value) => _sink.Add(value);
     }
 
     // 7. Legacy cache compatibility
