@@ -20,7 +20,8 @@ public sealed class DownloadManager
 
     public sealed record DownloadProgress(
         int Total, int Done, int Downloaded, int Skipped, int Failed,
-        long Bytes, double BytesPerSec, TimeSpan Eta, string Current);
+        long Bytes, double BytesPerSec, TimeSpan Eta, string Current,
+        string CurrentFileRel = "", long CurrentFileBytes = 0, long CurrentFileTotal = 0);
 
     public sealed record DownloadResult(
         int Downloaded, int Skipped, int Failed, long Bytes, bool Cancelled, IReadOnlyList<string> Errors)
@@ -103,6 +104,10 @@ public sealed class DownloadManager
             }
         }
 
+        // progress per file terakhir (rel, bytes, total) — diupdate callback dari worker
+        string lastFileRel = "";
+        long lastFileBytes = 0, lastFileTotal = 0;
+
         void Report(string current)
         {
             if (progress == null) return;
@@ -110,7 +115,8 @@ public sealed class DownloadManager
             var eta = speed > 1 && totalDone > 0
                 ? TimeSpan.FromSeconds(Math.Max(0, total - totalDone) / Math.Max(1.0, totalDone / sw.Elapsed.TotalSeconds))
                 : TimeSpan.Zero;
-            progress.Report(new DownloadProgress(total, totalDone, downloaded, skipped, failed, bytes, speed, eta, current));
+            progress.Report(new DownloadProgress(total, totalDone, downloaded, skipped, failed, bytes, speed, eta, current,
+                lastFileRel, lastFileBytes, lastFileTotal));
         }
 
         try
@@ -124,7 +130,11 @@ public sealed class DownloadManager
                     try
                     {
                         string current = item.Label;
-                        int outcome = await RunItemAsync(item, cancel.Token, _ => { });
+                        // progress byte per file — simpan sebagai "file aktif terakhir" (throttled di DownloadToFileAsync)
+                        int outcome = await RunItemAsync(item, cancel.Token, _ => { }, (rel, done, totalBytes) =>
+                        {
+                            lastFileRel = rel; lastFileBytes = done; lastFileTotal = totalBytes;
+                        });
                         switch (outcome)
                         {
                             case 0:
@@ -174,7 +184,8 @@ public sealed class DownloadManager
     }
 
     /// <returns>0 = skipped (sudah valid), 1 = downloaded, -1 = gagal</returns>
-    private async Task<int> RunItemAsync(DownloadItem item, CancellationToken ct, Action<string> status)
+    private async Task<int> RunItemAsync(DownloadItem item, CancellationToken ct, Action<string> status,
+        Action<string, long, long>? fileProgress = null)
     {
         switch (item.Kind)
         {
@@ -285,7 +296,7 @@ public sealed class DownloadManager
                     ct.ThrowIfCancellationRequested();
                     try
                     {
-                        await DownloadToFileAsync(ProgramServices.Http, url, dest, item.MinBytes, ct);
+                        await DownloadToFileAsync(ProgramServices.Http, url, dest, item.MinBytes, ct, rel, fileProgress);
                         return 1;
                     }
                     catch (OperationCanceledException) { throw; }
@@ -328,7 +339,8 @@ public sealed class DownloadManager
     }
 
     private async Task<long> DownloadToFileAsync(
-        HttpClient http, string url, string dest, long minBytes, CancellationToken ct)
+        HttpClient http, string url, string dest, long minBytes, CancellationToken ct,
+        string? relForProgress = null, Action<string, long, long>? fileProgress = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
         string part = PartPath(dest);
@@ -343,7 +355,9 @@ public sealed class DownloadManager
         resp.EnsureSuccessStatusCode();
 
         bool appending = resumeFrom > 0 && resp.StatusCode == System.Net.HttpStatusCode.PartialContent;
+        long expectedTotal = resumeFrom + (resp.Content.Headers.ContentLength ?? -1);
         long written = 0;
+        var progressSw = System.Diagnostics.Stopwatch.StartNew();
         await using (var src = await resp.Content.ReadAsStreamAsync(cts.Token))
         await using (var dst = new FileStream(part, appending ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
         {
@@ -354,8 +368,16 @@ public sealed class DownloadManager
             {
                 await dst.WriteAsync(buffer.AsMemory(0, read), cts.Token);
                 written += read;
+                // progress byte per file — throttle ±100 ms agar tidak membanjiri UI
+                if (fileProgress != null && relForProgress != null
+                    && progressSw.ElapsedMilliseconds >= 100)
+                {
+                    progressSw.Restart();
+                    fileProgress(relForProgress, resumeFrom + written, expectedTotal);
+                }
             }
         }
+        fileProgress?.Invoke(relForProgress ?? "", resumeFrom + written, expectedTotal);
 
         long totalSize = resumeFrom + written;
         if (totalSize < Math.Max(1, minBytes))

@@ -39,6 +39,17 @@ public sealed record SurahOfflineSummary(
 /// <param name="PerSurah">Jumlah ayat valid per surah (index 1..114), null bila belum discan detail.</param>
 public sealed record ReciterSummary(string Key, string Folder, string Display, int Valid, int Total, long Bytes, int[]? PerSurah = null);
 
+/// <summary>Progress live scan satu folder audio (qari / voice translation).</summary>
+public sealed record AudioFolderScanProgress(
+    int Index, int Total, string Key, string Folder, string Display, string SubDir,
+    int FilesFound, int ValidFiles, long Bytes, string Stage)
+{
+    public const string Waiting = "Waiting";
+    public const string Scanning = "Scanning";
+    public const string Completed = "Completed";
+    public const string Error = "Error";
+}
+
 public sealed record MushafPageSummary(string Key, string Display, int Pages, int PagesTotal, long Bytes);
 
 public sealed record TextKeySummary(string Kind, string Key, string Display, int SurahsValid, int SurahsTotal, int AyatFound, int AyatTotal, long Bytes);
@@ -378,25 +389,51 @@ public sealed class OfflineContentService
     public ReciterSummary ScanReciter(Reciter reciter)
         => ScanAudioFolder(reciter.Key, reciter.Folder, reciter.Display);
 
+    public ReciterSummary ScanReciter(Reciter reciter, int index, int total,
+        IProgress<AudioFolderScanProgress>? progress, CancellationToken ct)
+        => ScanAudioFolder(reciter.Key, reciter.Folder, reciter.Display, "audio", progress, ct, index, total);
+
     /// <summary>Scan folder audio per ayat — qari ("audio") maupun voice translation ("voice").
-    /// CEPAT: satu Directory.EnumerateFiles per folder (bukan 6.236 FileInfo probe), plus
-    /// breakdown per surah ikut dihitung agar UI tidak perlu scan ulang saat klik qari.</summary>
-    public ReciterSummary ScanAudioFolder(string key, string folder, string display, string subDir = "audio")
+    /// CEPAT: SATU Directory.EnumerateFiles per folder (bukan ribuan File.Exists probe).
+    /// Parser nama 6 digit: {surah:D3}{ayah:D3}.mp3 (mis. 001001.mp3, 002283.mp3, 114006.mp3).
+    /// File .part dan &lt;4096 byte tidak dihitung; PerSurah terisi langsung dari enumeration.
+    /// Progress dilaporkan live (throttle ±100 file / ±100 ms) via IProgress.</summary>
+    public ReciterSummary ScanAudioFolder(string key, string folder, string display, string subDir = "audio",
+        IProgress<AudioFolderScanProgress>? progress = null, CancellationToken ct = default,
+        int index = 0, int total = 0)
     {
         var perSurah = new int[TotalSurah + 1]; // index 1..114
         long bytes = 0;
         int valid = 0;
+        int found = 0;
         string baseDir = subDir == "voice" ? VoiceDir : AudioDir;
+        string stage = AudioFolderScanProgress.Scanning;
+        var throttle = System.Diagnostics.Stopwatch.StartNew();
+
+        void Report(string? st = null)
+        {
+            progress?.Report(new AudioFolderScanProgress(
+                index, total, key, folder, display, subDir, found, valid, bytes, st ?? stage));
+        }
+
         try
         {
+            Report(AudioFolderScanProgress.Scanning);
             string dir = Path.Combine(baseDir, folder);
             if (Directory.Exists(dir))
             {
                 foreach (var name in Directory.EnumerateFiles(dir, "*.mp3", SearchOption.TopDirectoryOnly))
                 {
-                    // format nama: {surah:D3}{ayah:D3}.mp3 (7 digit)
+                    ct.ThrowIfCancellationRequested();
+                    // .part bukan file final — jangan pernah dihitung
+                    if (name.EndsWith(".part", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!name.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)) continue;
+                    found++;
+                    // format nama: {surah:D3}{ayah:D3}.mp3 — 6 digit
                     string file = Path.GetFileNameWithoutExtension(name);
-                    if (file.Length != 7 || !int.TryParse(file.AsSpan(0, 3), out int s) || !int.TryParse(file.AsSpan(3, 3), out int a))
+                    if (file.Length != 6
+                        || !int.TryParse(file.AsSpan(0, 3), out int s)
+                        || !int.TryParse(file.AsSpan(3, 3), out int a))
                     {
                         continue;
                     }
@@ -412,12 +449,25 @@ public sealed class OfflineContentService
                         perSurah[s]++;
                         bytes += len;
                     }
+                    if (found % 100 == 0 && throttle.ElapsedMilliseconds >= 100)
+                    {
+                        throttle.Restart();
+                        Report();
+                    }
                 }
             }
+            stage = AudioFolderScanProgress.Completed;
+        }
+        catch (OperationCanceledException)
+        {
+            stage = AudioFolderScanProgress.Error;
+            throw;
         }
         catch
         {
+            stage = AudioFolderScanProgress.Error;
         }
+        Report();
         return new ReciterSummary(key, folder, display, valid, TotalAyat, bytes, perSurah);
     }
 
