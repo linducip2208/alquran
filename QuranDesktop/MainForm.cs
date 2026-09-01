@@ -447,7 +447,7 @@ internal sealed class MainForm : Form
             IsLink = true,
             Text = "",
         };
-        _lblOffline.Click += (_, _) => OpenDownloadCenter();
+        _lblOffline.Click += (_, _) => OpenDownloadCenter(_curSurah, _curAyah);
         _statusStrip = new StatusStrip
         {
             Dock = DockStyle.Bottom,
@@ -1566,7 +1566,8 @@ internal sealed class MainForm : Form
 
             if (CurrentMode == "mushaf" && _mushafView.CurrentPage > 0)
             {
-                int page = QuranData.FindPage(mk, _curSurah, _curAyah);
+                // FindMushafPage resolve mushafKey -> PageKey (FindPage tidak menerima mushaf key)
+                int page = MushafTypes.FindMushafPage(mk, _curSurah, _curAyah);
                 var st = svc.GetAyahStatus(_curSurah, _curAyah, page, mk,
                     new[] { tk }, new[] { fk }, new[] { rec }, Array.Empty<VoiceTranslation>());
                 _lblOffline.Text =
@@ -1586,7 +1587,7 @@ internal sealed class MainForm : Form
             else
             {
                 bool arab = svc.GetArabicStatus(_curSurah, _curAyah);
-                bool trans = !svc.GetTarjamaStatus(tk, _curSurah).MissingAyat.Contains(_curAyah);
+                bool trans = svc.HasTarjamaAyah(tk, _curSurah, _curAyah);
                 bool audio = svc.GetAudioStatus(rec.Folder, _curSurah, _curAyah).IsValid;
                 _lblOffline.Text =
                     $"Offline: {(arab ? "✓" : "—")} Teks  {(trans ? "✓" : "—")} Arti  {(audio ? "✓" : "—")} Audio  ";

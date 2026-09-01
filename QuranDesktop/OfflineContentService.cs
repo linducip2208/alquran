@@ -122,32 +122,45 @@ public sealed class OfflineContentService
     public sealed record TextSurahStatus(bool FileValid, int AyatFound, HashSet<int> MissingAyat, long Bytes)
     {
         public bool Complete => FileValid && MissingAyat.Count == 0;
+
+        /// <summary>Resource ayat tersedia HANYA jika file valid DAN ayat tidak missing.
+        /// File tidak ada/rusak menghasilkan MissingAyat penuh, sehingga tidak ada false-positive.</summary>
+        public bool HasAyah(int ayah) => FileValid && !MissingAyat.Contains(ayah);
     }
 
     private static TextSurahStatus ReadTextSurah(string dir, string subKey, int surah)
     {
         string path = Path.Combine(dir, subKey, surah + ".json");
+        int expected = QuranData.SurahAyahCount(surah);
+        var fullMissing = Enumerable.Range(1, expected).ToHashSet();
+
+        TextSurahStatus Invalid() => new(false, 0, fullMissing.ToHashSet(), 0);
+
         try
         {
-            if (!File.Exists(path)) return new TextSurahStatus(false, 0, new HashSet<int>(), 0);
+            if (!File.Exists(path)) return Invalid();
             long bytes = new FileInfo(path).Length;
-            if (bytes == 0) return new TextSurahStatus(false, 0, new HashSet<int>(), 0);
+            if (bytes == 0) return Invalid();
             using var fs = File.OpenRead(path);
             using var doc = JsonDocument.Parse(fs);
-            var found = new HashSet<int>();
-            if (doc.RootElement.TryGetProperty("ayat", out var ayatEl) && ayatEl.ValueKind == JsonValueKind.Object)
+            if (doc.RootElement.ValueKind != JsonValueKind.Object
+                || !doc.RootElement.TryGetProperty("ayat", out var ayatEl)
+                || ayatEl.ValueKind != JsonValueKind.Object)
             {
-                foreach (var prop in ayatEl.EnumerateObject())
+                // struktur JSON salah — seluruh ayat dianggap missing
+                return Invalid();
+            }
+            var found = new HashSet<int>();
+            foreach (var prop in ayatEl.EnumerateObject())
+            {
+                if (int.TryParse(prop.Name, out int a)
+                    && prop.Value.ValueKind == JsonValueKind.String
+                    && !string.IsNullOrWhiteSpace(prop.Value.GetString()))
                 {
-                    if (int.TryParse(prop.Name, out int a)
-                        && prop.Value.ValueKind == JsonValueKind.String
-                        && !string.IsNullOrWhiteSpace(prop.Value.GetString()))
-                    {
-                        found.Add(a);
-                    }
+                    found.Add(a);
                 }
             }
-            int expected = QuranData.SurahAyahCount(surah);
+            if (found.Count == 0) return Invalid();
             var missing = new HashSet<int>();
             for (int a = 1; a <= expected; a++)
             {
@@ -157,7 +170,7 @@ public sealed class OfflineContentService
         }
         catch
         {
-            return new TextSurahStatus(false, 0, new HashSet<int>(), 0);
+            return Invalid();
         }
     }
 
@@ -167,13 +180,23 @@ public sealed class OfflineContentService
     public TextSurahStatus GetTafsirStatus(string author, int surah)
         => _tafsirCache.GetOrAdd($"{author}|{surah}", _ => ReadTextSurah(TafsirDir, author, surah));
 
+    /// <summary>Ayat terjemahan tersedia HANYA jika file JSON valid DAN ayat ada di dalamnya.</summary>
+    public bool HasTarjamaAyah(string transKey, int surah, int ayah)
+        => GetTarjamaStatus(transKey, surah).HasAyah(ayah);
+
+    /// <summary>Ayat tafsir tersedia HANYA jika file JSON valid DAN ayat ada di dalamnya.</summary>
+    public bool HasTafsirAyah(string author, int surah, int ayah)
+        => GetTafsirStatus(author, surah).HasAyah(ayah);
+
     public bool GetHiliteStatus(string mushafKey, int page)
         => _hiliteCache.GetOrAdd($"{mushafKey}|{page}", _ => IsJsonReadable(Path.Combine(HilitesDir, mushafKey, page + ".json")));
 
     public bool GetArabicStatus(int surah, int ayah)
     {
+        // teks Arab bawaan (embedded resource) — per-ayah membership, akurat
         if (MadinahText.HasAyah(surah, ayah)) return true;
-        return GetTarjamaStatus("ar_ayat", surah).AyatFound >= ayah || !GetTarjamaStatus("ar_ayat", surah).MissingAyat.Contains(ayah);
+        // fallback cache "ar_ayat" — WAJIB cek FileValid + membership ayat (bukan count)
+        return HasTarjamaAyah("ar_ayat", surah, ayah);
     }
 
     public AyahOfflineStatus GetAyahStatus(
@@ -191,11 +214,11 @@ public sealed class OfflineContentService
         st.ArabicAvailable = GetArabicStatus(surah, ayah);
         foreach (var t in translationKeys)
         {
-            st.TranslationAvailable[t] = !GetTarjamaStatus(t, surah).MissingAyat.Contains(ayah);
+            st.TranslationAvailable[t] = HasTarjamaAyah(t, surah, ayah);
         }
         foreach (var tf in tafsirKeys)
         {
-            st.TafsirAvailable[tf] = !GetTafsirStatus(tf, surah).MissingAyat.Contains(ayah);
+            st.TafsirAvailable[tf] = HasTafsirAyah(tf, surah, ayah);
         }
         foreach (var r in reciters)
         {
@@ -247,6 +270,28 @@ public sealed class OfflineContentService
                     _hiliteCache.TryRemove($"{parts[1]}|{pg2}", out _);
                 }
             }
+            else if (relNorm.StartsWith("teks/", StringComparison.Ordinal))
+            {
+                var parts = relNorm.Split('/');
+                if (parts.Length >= 3 && int.TryParse(Path.GetFileNameWithoutExtension(parts[2]), out int s1))
+                {
+                    foreach (var k in _tarjamaCache.Keys.Where(k => k.StartsWith(parts[1] + "|", StringComparison.Ordinal)).ToList())
+                    {
+                        _tarjamaCache.TryRemove(k, out _);
+                    }
+                }
+            }
+            else if (relNorm.StartsWith("tafsir/", StringComparison.Ordinal))
+            {
+                var parts = relNorm.Split('/');
+                if (parts.Length >= 3 && int.TryParse(Path.GetFileNameWithoutExtension(parts[2]), out int s2))
+                {
+                    foreach (var k in _tafsirCache.Keys.Where(k => k.StartsWith(parts[1] + "|", StringComparison.Ordinal)).ToList())
+                    {
+                        _tafsirCache.TryRemove(k, out _);
+                    }
+                }
+            }
             else
             {
                 _audioCache.TryRemove(relNorm, out _);
@@ -277,10 +322,13 @@ public sealed class OfflineContentService
         IReadOnlyList<Reciter> reciters)
     {
         int count = QuranData.SurahAyahCount(surah);
+        // QuranData.FindPage butuh PAGE KEY — JANGAN kirim mushaf key (hafs/warsh/tajweed)
+        var mt = MushafTypes.ResolveMushaf(mushafKey);
         var pages = new HashSet<int>();
-        for (int a = 1; a <= count; a++) pages.Add(QuranData.FindPage(mushafKey, surah, a));
+        for (int a = 1; a <= count; a++) pages.Add(MushafTypes.FindMushafPage(mt.Key, surah, a));
         int mushafTotal = pages.Count;
-        int mushafOk = pages.Count(p => GetMushafPageStatus(mushafKey, p).IsValid);
+        int mushafOk = pages.Count(p => GetMushafPageStatus(mt.Key, p).IsValid);
+        bool hiliteOk = pages.All(p => GetHiliteStatus(mt.Key, p));
 
         int arabOk = 0;
         var trans = translationKeys.ToDictionary(k => k, _ => 0);
@@ -291,13 +339,13 @@ public sealed class OfflineContentService
         for (int a = 1; a <= count; a++)
         {
             if (GetArabicStatus(surah, a)) arabOk++;
-            foreach (var k in trans.Keys.ToList())
+            foreach (var k in trans.Keys)
             {
-                if (!GetTarjamaStatus(k, surah).MissingAyat.Contains(a)) trans[k]++;
+                if (HasTarjamaAyah(k, surah, a)) trans[k]++;
             }
-            foreach (var k in tafs.Keys.ToList())
+            foreach (var k in tafs.Keys)
             {
-                if (!GetTafsirStatus(k, surah).MissingAyat.Contains(a)) tafs[k]++;
+                if (HasTafsirAyah(k, surah, a)) tafs[k]++;
             }
             foreach (var r in reciters)
             {
@@ -306,7 +354,7 @@ public sealed class OfflineContentService
             }
         }
 
-        bool complete = mushafOk == mushafTotal
+        bool complete = mushafOk == mushafTotal && hiliteOk
             && arabOk == count
             && trans.Values.All(v => v == count)
             && tafs.Values.All(v => v == count)
@@ -321,6 +369,10 @@ public sealed class OfflineContentService
     // ============ SCAN: RECITER ============
 
     public ReciterSummary ScanReciter(Reciter reciter)
+        => ScanAudioFolder(reciter.Key, reciter.Folder, reciter.Display);
+
+    /// <summary>Scan folder audio per ayat (qari maupun voice translation) — hitung dari file aktual di disk.</summary>
+    public ReciterSummary ScanAudioFolder(string key, string folder, string display)
     {
         int valid = 0;
         long bytes = 0;
@@ -330,11 +382,11 @@ public sealed class OfflineContentService
             int n = QuranData.SurahAyahCount(s);
             for (int a = 1; a <= n; a++)
             {
-                var fi = new FileInfo(KsuAudio.CachePath(Path.Combine(reciter.Folder, $"{s:D3}{a:D3}.mp3")));
+                var fi = new FileInfo(KsuAudio.CachePath(Path.Combine(folder, $"{s:D3}{a:D3}.mp3")));
                 if (fi.Exists && fi.Length >= 4096) { valid++; bytes += fi.Length; }
             }
         }
-        return new ReciterSummary(reciter.Key, reciter.Folder, reciter.Display, valid, total, bytes);
+        return new ReciterSummary(key, folder, display, valid, total, bytes);
     }
 
     public MushafPageSummary ScanMushaf(MushafType mt)
@@ -385,7 +437,11 @@ public sealed class OfflineContentService
             foreach (var t in Translations.All)
             {
                 long b = DirSize(Path.Combine(TeksDir, t.Key));
-                if (b > 0) items.Add(new StorageItem($"Terjemahan {t.Display}", b));
+                if (b > 0)
+                {
+                    string label = t.Key == "ar_ayat" ? "Teks Arab (ar_ayat)" : $"Terjemahan {t.Display}";
+                    items.Add(new StorageItem(label, b));
+                }
                 total += b;
             }
             foreach (var t in Tafsirs.All)
@@ -394,9 +450,21 @@ public sealed class OfflineContentService
                 if (b > 0) items.Add(new StorageItem($"Tafsir {t.Display}", b));
                 total += b;
             }
-            long hb = DirSize(HilitesDir);
-            if (hb > 0) items.Add(new StorageItem("Hilite ayat", hb));
-            total += hb;
+            foreach (var mt in MushafTypes.All)
+            {
+                long hb = DirSize(Path.Combine(HilitesDir, mt.Key));
+                if (hb > 0) items.Add(new StorageItem($"Hilite {mt.Display}", hb));
+                total += hb;
+            }
+            // hilite untuk mushaf key yang tidak dikenal (mis. legacy)
+            long knownHilites = MushafTypes.All.Sum(mt => DirSize(Path.Combine(HilitesDir, mt.Key)));
+            long hbAll = DirSize(HilitesDir);
+            if (hbAll > knownHilites)
+            {
+                long hb = hbAll - knownHilites;
+                items.Add(new StorageItem("Hilite lain", hb));
+                total += hb;
+            }
             long fb = DirSize(Path.Combine(CacheRoot, "fonts"));
             if (fb > 0) items.Add(new StorageItem("Font", fb));
             total += fb;
@@ -412,6 +480,8 @@ public sealed class OfflineContentService
                 if (b > 0) items.Add(new StorageItem($"Voice {v.Display}", b));
                 total += b;
             }
+            long partBytes = PartFileSize();
+            if (partBytes > 0) items.Add(new StorageItem("File .part (belum selesai)", partBytes));
             items.Add(new StorageItem("TOTAL", total));
             return new StorageReport(items, total);
         });
@@ -427,6 +497,24 @@ public sealed class OfflineContentService
             long sum = 0;
             var di = new DirectoryInfo(dir);
             foreach (var fi in di.EnumerateFiles("*", SearchOption.AllDirectories)) sum += fi.Length;
+            return sum;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private long PartFileSize()
+    {
+        try
+        {
+            if (!Directory.Exists(CacheRoot)) return 0;
+            long sum = 0;
+            foreach (var fi in new DirectoryInfo(CacheRoot).EnumerateFiles("*.part", SearchOption.AllDirectories))
+            {
+                sum += fi.Length;
+            }
             return sum;
         }
         catch
@@ -492,6 +580,15 @@ public sealed class OfflineContentService
         {
             _mushafCache.TryRemove(k, out _);
         }
+        _storageCache = null;
+        FireChanged();
+        return n;
+    }
+
+    public int DeleteHilites()
+    {
+        int n = DeleteDirIfExists(HilitesDir);
+        _hiliteCache.Clear();
         _storageCache = null;
         FireChanged();
         return n;

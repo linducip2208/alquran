@@ -35,9 +35,12 @@ public static class OfflineSelfTest
         CheckCounts();
         AudioDetection();
         TextJsonDetection();
+        TextAyatAccuracy();
         TafsirDiskCache();
         HiliteDiskCache();
+        AyahStatusAccuracy();
         DownloadEngineAsync().GetAwaiter().GetResult();
+        StorageActualBytes();
         LegacyCompatibility();
 
         Console.WriteLine();
@@ -60,7 +63,25 @@ public static class OfflineSelfTest
         Check("QuranData.SurahAyahCount(1) = 7", QuranData.SurahAyahCount(1) == 7);
         Check("PageCount(Page) = 604", QuranData.PageCount("Page") == 604, $"got {QuranData.PageCount("Page")}");
         Check("PageCount(Page2) = 604", QuranData.PageCount("Page2") == 604, $"got {QuranData.PageCount("Page2")}");
+        Check("PageCount(Page_warsh) > 0", QuranData.PageCount("Page_warsh") > 0, $"got {QuranData.PageCount("Page_warsh")}");
         Check("IdToAya(ayat terakhir) = 114:6", QuranData.IdToAya(QuranData.AyaToId(114, 6)) == (114, 6));
+
+        Console.WriteLine("-- Mapping mushafKey -> PageKey & FindPage");
+        foreach (var mt in MushafTypes.All)
+        {
+            int pc = QuranData.PageCount(mt.PageKey);
+            bool ok1 = MushafTypes.ResolveMushaf(mt.Key).PageKey == mt.PageKey;
+            Check($"ResolveMushaf({mt.Key}) -> PageKey {mt.PageKey}", ok1);
+            int p1 = MushafTypes.FindMushafPage(mt.Key, 2, 283); // tidak boleh crash
+            int p2 = MushafTypes.FindMushafPage(mt.Key, 1, 1);
+            Check($"FindMushafPage({mt.Key}) tidak crash & valid",
+                p1 >= 1 && p1 <= pc && p2 >= 1 && p2 <= pc,
+                $"2:283={p1} (max {pc})");
+        }
+        Check("ResolveMushaf(key tak dikenal) fallback", MushafTypes.ResolveMushaf("??").PageKey == MushafTypes.All[0].PageKey);
+        Check("FindPage(Page) 2:282 = halaman valid",
+            QuranData.FindPage("Page", 2, 282) >= 1 && QuranData.FindPage("Page", 2, 282) <= 604,
+            $"got {QuranData.FindPage("Page", 2, 282)}");
     }
 
     // 2. Deteksi audio existing / missing / zero-byte / .part
@@ -143,6 +164,143 @@ public static class OfflineSelfTest
         {
             try { Directory.Delete(dir, true); } catch { }
             for (int s = 1; s <= 5; s++) svc.InvalidateTarjama(key, s);
+        }
+    }
+
+    // 4a. Akurasi status ayat: file missing/rusak/incomplete TIDAK boleh false-positive
+    private static void TextAyatAccuracy()
+    {
+        Console.WriteLine("-- Akurasi status ayat (missing/rusak/incomplete)");
+        var svc = OfflineContentService.Instance;
+        string transKey = "selftest_trans_acc";
+        string tafsirKey = "selftest_tafsir_acc";
+        string tdir = Path.Combine(svc.TeksDir, transKey);
+        string fdir = Path.Combine(svc.TafsirDir, tafsirKey);
+        try
+        {
+            // (9) file translation MISSING -> status ayat = false untuk SEMUA ayat
+            var stMissing = svc.GetTarjamaStatus(transKey, 1);
+            Check("translation file missing -> FileValid=false", !stMissing.FileValid);
+            Check("translation file missing -> MissingAyat penuh", stMissing.MissingAyat.Count == QuranData.SurahAyahCount(1));
+            Check("translation missing -> ayat 1 = false", !svc.HasTarjamaAyah(transKey, 1, 1));
+            Check("translation missing -> ayat 7 = false", !svc.HasTarjamaAyah(transKey, 1, 7));
+
+            // (10) JSON RUSAK -> status ayat = false
+            Directory.CreateDirectory(tdir);
+            File.WriteAllText(Path.Combine(tdir, "1.json"), "{ bukan json");
+            var stCorrupt = svc.GetTarjamaStatus(transKey, 1);
+            Check("translation JSON rusak -> FileValid=false", !stCorrupt.FileValid);
+            Check("translation JSON rusak -> ayat 1 = false", !svc.HasTarjamaAyah(transKey, 1, 1));
+
+            // struktur JSON salah (root array / ayat bukan object)
+            File.WriteAllText(Path.Combine(tdir, "4.json"), "[]");
+            Check("translation JSON struktur salah -> ayat 1 = false", !svc.HasTarjamaAyah(transKey, 4, 1));
+
+            // (11) JSON INCOMPLETE -> hanya ayat yang ada = true (akurat per ayat)
+            var partial = new Dictionary<string, object>
+            {
+                ["ayat"] = new Dictionary<string, string> { ["1"] = "a1", ["2"] = "a2", ["4"] = "a4" },
+            };
+            File.WriteAllText(Path.Combine(tdir, "3.json"), JsonSerializer.Serialize(partial));
+            var stPart = svc.GetTarjamaStatus(transKey, 3);
+            Check("translation incomplete: ayat 1,2,4 = true",
+                svc.HasTarjamaAyah(transKey, 3, 1) && svc.HasTarjamaAyah(transKey, 3, 2) && svc.HasTarjamaAyah(transKey, 3, 4));
+            Check("translation incomplete: ayat 3,5 = false (bukan count!)",
+                !svc.HasTarjamaAyah(transKey, 3, 3) && !svc.HasTarjamaAyah(transKey, 3, 5));
+            Check("AyatFound = 3 tapi ayat 3 tetap missing", stPart.AyatFound == 3 && stPart.MissingAyat.Contains(3));
+
+            // (12) file TAFSIR MISSING -> false
+            var tfMissing = svc.GetTafsirStatus(tafsirKey, 1);
+            Check("tafsir file missing -> FileValid=false", !tfMissing.FileValid);
+            Check("tafsir missing -> ayat 1 = false", !svc.HasTafsirAyah(tafsirKey, 1, 1));
+
+            // (13) TAFSIR INCOMPLETE -> akurat per ayat
+            Directory.CreateDirectory(fdir);
+            var tafPart = new Dictionary<string, object>
+            {
+                ["ayat"] = new Dictionary<string, string> { ["1"] = "t1", ["2"] = "t2", ["4"] = "t4" },
+            };
+            File.WriteAllText(Path.Combine(fdir, "1.json"), JsonSerializer.Serialize(tafPart));
+            svc.InvalidateTafsir(tafsirKey, 1); // refresh cache setelah file ditulis
+            Check("tafsir incomplete: ayat 1,2,4 = true; ayat 3 = false",
+                svc.HasTafsirAyah(tafsirKey, 1, 1) && svc.HasTafsirAyah(tafsirKey, 1, 2)
+                && svc.HasTafsirAyah(tafsirKey, 1, 4) && !svc.HasTafsirAyah(tafsirKey, 1, 3));
+
+            // (4-BLOCKER) GetArabicStatus berbasis membership: cache ar_ayat dipalsukan incomplete (ayat 1,2,4 saja)
+            // ayat 3 TIDAK ada di cache — hasil harus sama dengan keberadaan MadinahText embedded
+            string arDir = Path.Combine(svc.TeksDir, "ar_ayat");
+            bool madinah = MadinahText.HasAyah(3, 3);
+            Directory.CreateDirectory(arDir);
+            File.WriteAllText(Path.Combine(arDir, "3.json"), JsonSerializer.Serialize(partial));
+            svc.InvalidateTarjama("ar_ayat", 3);
+            bool arab33 = svc.GetArabicStatus(3, 3);
+            Check("GetArabicStatus(3:3) = membership ayat (bukan count)",
+                arab33 == madinah && !svc.HasTarjamaAyah("ar_ayat", 3, 3),
+                $"madinah={madinah} status={arab33}");
+            svc.InvalidateTarjama("ar_ayat", 3);
+        }
+        finally
+        {
+            try { Directory.Delete(tdir, true); } catch { }
+            try { Directory.Delete(fdir, true); } catch { }
+            for (int s = 1; s <= 4; s++)
+            {
+                svc.InvalidateTarjama(transKey, s);
+                svc.InvalidateTafsir(tafsirKey, s);
+            }
+            svc.InvalidateTarjama("ar_ayat", 3);
+        }
+    }
+
+    // 4b. GetAyahStatus per ayat (QS 1:1): struktur lengkap semua qari & voice, halaman benar
+    private static void AyahStatusAccuracy()
+    {
+        Console.WriteLine("-- Per-ayah status QS 1:1");
+        var svc = OfflineContentService.Instance;
+        var mk = MushafTypes.ResolveMushaf("hafs");
+        int page = MushafTypes.FindMushafPage("hafs", 1, 1);
+        Check("QS 1:1 -> halaman 1", page == 1, $"got {page}");
+        var st = svc.GetAyahStatus(1, 1, page, "hafs",
+            new[] { "selftest_missing_key" }, new[] { "selftest_missing_tafsir" },
+            Reciters.All, VoiceTranslations.All);
+        Check("GetAyahStatus QS 1:1 semua qari tercakup", st.ReciterAudio.Count == Reciters.All.Count,
+            $"got {st.ReciterAudio.Count}");
+        Check("GetAyahStatus QS 1:1 semua voice translation tercakup", st.VoiceTranslationAudio.Count == VoiceTranslations.All.Count);
+        Check("GetAyahStatus translation key missing -> false",
+            st.TranslationAvailable.TryGetValue("selftest_missing_key", out var tv) && !tv);
+        Check("GetAyahStatus tafsir key missing -> false",
+            st.TafsirAvailable.TryGetValue("selftest_missing_tafsir", out var tfv) && !tfv);
+        Check("GetAyahStatus MushafAvailable mencerminkan file aktual", st.MushafAvailable == svc.GetMushafPageStatus("hafs", 1).IsValid);
+        Check("GetAyahStatus HiliteAvailable mencerminkan file aktual", st.HiliteAvailable == svc.GetHiliteStatus("hafs", 1));
+    }
+
+    // 6b. Storage actual bytes
+    private static void StorageActualBytes()
+    {
+        Console.WriteLine("-- Storage actual bytes");
+        var svc = OfflineContentService.Instance;
+        string dir = Path.Combine(svc.HilitesDir, "SelfTest_HiliteStorage");
+        string file = Path.Combine(dir, "1.json");
+        try
+        {
+            Directory.CreateDirectory(dir);
+            byte[] payload = new byte[12_345];
+            File.WriteAllBytes(file, payload);
+            svc.InvalidateAll();
+            var report = svc.GetStorageAsync().GetAwaiter().GetResult();
+            long sumItems = report.Items.Where(i => i.Label != "TOTAL").Sum(i => i.Bytes);
+            Check("Storage TOTAL = jumlah item", report.TotalBytes == sumItems,
+                $"total={report.TotalBytes} sum={sumItems}");
+            var hiliteItem = report.Items.FirstOrDefault(i => i.Label == "Hilite lain");
+            Check("File uji terhitung sebagai 'Hilite lain' (actual bytes)",
+                hiliteItem != null && hiliteItem.Bytes >= 12_345,
+                hiliteItem?.Bytes.ToString() ?? "tidak ada");
+            Check("Storage report tidak negatif", report.TotalBytes >= 0);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+            svc.InvalidateAll();
         }
     }
 
@@ -266,6 +424,16 @@ public static class OfflineSelfTest
                             data = payload[(int)Math.Min(start, payload.Length)..];
                         }
                     }
+                    // test_norange: server TIDAK mendukung Range → selalu 200 full body
+                    if (rel.StartsWith("test_norange"))
+                    {
+                        ctx.Response.StatusCode = 200;
+                        ctx.Response.ContentType = "application/octet-stream";
+                        ctx.Response.ContentLength64 = data.Length;
+                        await ctx.Response.OutputStream.WriteAsync(data);
+                        ctx.Response.Close();
+                        continue;
+                    }
                     ctx.Response.ContentType = "application/octet-stream";
                     ctx.Response.ContentLength64 = data.Length;
                     await ctx.Response.OutputStream.WriteAsync(data);
@@ -342,6 +510,48 @@ public static class OfflineSelfTest
             Check("resume dari .part menghasilkan file utuh", res4.Downloaded == 1 && new FileInfo(destD).Length == payload.Length,
                 $"dl={res4.Downloaded} skip={res4.Skipped} fail={res4.Failed} errs=[{string.Join(";", res4.Errors)}] size={(File.Exists(destD) ? new FileInfo(destD).Length : -1)}");
 
+            // (d2) server TIDAK mendukung Range (200) → TIDAK boleh append ke .part lama; restart dari awal
+            string relD2 = "test_norange/001306.mp3";
+            string destD2 = KsuAudio.CachePath(relD2);
+            Directory.CreateDirectory(Path.GetDirectoryName(destD2)!);
+            TryDelete(destD2);
+            TryDelete(destD2 + ".part");
+            byte[] junkPart = new byte[payload.Length / 4];
+            Array.Fill(junkPart, (byte)0xFF);
+            File.WriteAllBytes(destD2 + ".part", junkPart); // .part lama berisi data sampah
+            var resD2 = await dm.RunAsync(new[]
+            {
+                new DownloadManager.DownloadItem { Label = "t4b", Kind = DownloadManager.JobKind.File, Rel = relD2, Url = prefix + relD2 },
+            }, null, CancellationToken.None);
+            Check("server no-Range → restart dari awal (bukan append 200 ke .part)",
+                resD2.Downloaded == 1 && new FileInfo(destD2).Length == payload.Length
+                && File.ReadAllBytes(destD2)[..16].SequenceEqual(payload[..16]),
+                $"dl={resD2.Downloaded} size={(File.Exists(destD2) ? new FileInfo(destD2).Length : -1)} errs=[{string.Join(";", resD2.Errors)}]");
+
+            // (d3) tafsir job per ayat: ayat yang sudah ada di disk → SKIP tanpa network
+            string tafsKey = "selftest_dl_tafsir";
+            string tafsDir = Path.Combine(svc.TafsirDir, tafsKey);
+            try
+            {
+                Directory.CreateDirectory(tafsDir);
+                var ayat = new Dictionary<string, object>
+                {
+                    ["ayat"] = new Dictionary<string, string> { ["1"] = "t1", ["2"] = "t2" },
+                };
+                File.WriteAllText(Path.Combine(tafsDir, "1.json"), JsonSerializer.Serialize(ayat));
+                var resD3 = await dm.RunAsync(new[]
+                {
+                    new DownloadManager.DownloadItem { Label = "t4c", Kind = DownloadManager.JobKind.Tafsir, TextKey = tafsKey, Surah = 1, Ayah = 1 },
+                }, null, CancellationToken.None);
+                Check("tafsir per-ayah sudah ada → skip tanpa network", resD3.Skipped == 1 && resD3.Downloaded == 0 && resD3.Failed == 0,
+                    $"dl={resD3.Downloaded} skip={resD3.Skipped} fail={resD3.Failed}");
+            }
+            finally
+            {
+                try { Directory.Delete(tafsDir, true); } catch { }
+                svc.InvalidateTafsir(tafsKey, 1);
+            }
+
             // (e) retry: server 500 dua attempt pertama (gagal), maxRetries default → gagal tercatat; lalu sukses saat 5xx hilang
             string relE = "test_5xx/001004.mp3";
             var res5 = await dm.RunAsync(new[]
@@ -394,6 +604,25 @@ public static class OfflineSelfTest
         }
 
         static bool FileValidLocal(string p, long min) => File.Exists(p) && new FileInfo(p).Length >= min;
+
+        static void TryDelete(string p)
+        {
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                try
+                {
+                    if (File.Exists(p)) File.Delete(p);
+                    return;
+                }
+                catch when (attempt < 3)
+                {
+                    Thread.Sleep(150);
+                }
+                catch
+                {
+                }
+            }
+        }
     }
 
     // 7. Legacy cache compatibility

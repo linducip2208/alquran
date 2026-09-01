@@ -34,7 +34,7 @@ public sealed class KsuApi
     public static string TafsirPath(string author, int surah)
         => Path.Combine(KsuAudio.CacheDir, "tafsir", author, surah + ".json");
 
-    private static async Task<Dictionary<int, string>> ReadTafsirDiskAsync(string author, int surah, CancellationToken ct)
+    private static async Task<Dictionary<int, string>> ReadTafsirDiskCoreAsync(string author, int surah, CancellationToken ct)
     {
         var result = new Dictionary<int, string>();
         string path = TafsirPath(author, surah);
@@ -60,6 +60,23 @@ public sealed class KsuApi
         return result;
     }
 
+    /// <summary>Baca disk tafsir dengan lock per file — aman terhadap penulis paralel (tidak ada partial-read).</summary>
+    private static async Task<Dictionary<int, string>> ReadTafsirDiskAsync(string author, int surah, CancellationToken ct)
+    {
+        string path = TafsirPath(author, surah);
+        if (!File.Exists(path)) return new Dictionary<int, string>();
+        var lockObj = FileLock(path);
+        await lockObj.WaitAsync(ct);
+        try
+        {
+            return await ReadTafsirDiskCoreAsync(author, surah, ct);
+        }
+        finally
+        {
+            lockObj.Release();
+        }
+    }
+
     private static async Task WriteTafsirDiskAsync(string author, int surah, Dictionary<int, string> ayat, CancellationToken ct)
     {
         string path = TafsirPath(author, surah);
@@ -69,10 +86,11 @@ public sealed class KsuApi
             await lockObj.WaitAsync(ct);
             try
             {
-                var existing = await ReadTafsirDiskAsync(author, surah, ct);
+                // merge ke file existing (core read TANPA lock — kita sudah memegang lock)
+                var existing = await ReadTafsirDiskCoreAsync(author, surah, ct);
                 foreach (var (a, text) in ayat)
                 {
-                    if (string.IsNullOrWhiteSpace(text) && existing.TryGetValue(a, out var old)) ayat[a] = old;
+                    if (string.IsNullOrWhiteSpace(text) && existing.TryGetValue(a, out var old)) existing[a] = old;
                     else if (!string.IsNullOrWhiteSpace(text)) existing[a] = text;
                 }
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -88,7 +106,10 @@ public sealed class KsuApi
                     writer.WriteEndObject();
                     writer.WriteEndObject();
                 }
-                File.WriteAllBytes(path, ms.ToArray());
+                // tulis ke file temp lalu move atomik — file existing tidak pernah setengah-tertulis
+                string tmp = path + ".tmp";
+                File.WriteAllBytes(tmp, ms.ToArray());
+                File.Move(tmp, path, overwrite: true);
             }
             finally
             {
@@ -206,7 +227,48 @@ public sealed class KsuApi
                     writer.WriteEndObject();
                     writer.WriteEndObject();
                 }
-                File.WriteAllBytes(diskPath, ms.ToArray());
+                // merge: jangan buang ayat existing di disk (race dengan fetch per ayat lain)
+                var merged = new Dictionary<int, string>();
+                if (File.Exists(diskPath))
+                {
+                    try
+                    {
+                        using var fsOld = File.OpenRead(diskPath);
+                        using var docOld = await JsonDocument.ParseAsync(fsOld, cancellationToken: ct);
+                        if (docOld.RootElement.TryGetProperty("ayat", out var oldEl) && oldEl.ValueKind == JsonValueKind.Object)
+                        {
+                            foreach (var p in oldEl.EnumerateObject())
+                            {
+                                if (int.TryParse(p.Name, out int oa) && p.Value.ValueKind == JsonValueKind.String)
+                                {
+                                    merged[oa] = p.Value.GetString() ?? "";
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+                foreach (var (a, text) in map)
+                {
+                    if (!string.IsNullOrWhiteSpace(text)) merged[a] = text;
+                }
+                using var msM = new MemoryStream();
+                using (var writer = new Utf8JsonWriter(msM))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteStartObject("ayat");
+                    foreach (var (a, text) in merged.OrderBy(k => k.Key))
+                    {
+                        writer.WriteString(a.ToString(), text);
+                    }
+                    writer.WriteEndObject();
+                    writer.WriteEndObject();
+                }
+                string tmp = diskPath + ".tmp";
+                File.WriteAllBytes(tmp, msM.ToArray());
+                File.Move(tmp, diskPath, overwrite: true);
             }
             catch
             {
@@ -301,7 +363,9 @@ public sealed class KsuApi
                     }
                     writer.WriteEndObject();
                 }
-                File.WriteAllBytes(path, ms.ToArray());
+                string tmp = path + ".tmp";
+                File.WriteAllBytes(tmp, ms.ToArray());
+                File.Move(tmp, path, overwrite: true);
             }
             finally
             {

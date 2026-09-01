@@ -12,6 +12,16 @@ public static class MushafTypes
     };
 
     public static MushafType? Find(string key) => All.FirstOrDefault(m => m.Key == key);
+
+    /// <summary>Resolve mushafKey -> MushafType (fallback mushaf pertama bila key tidak dikenal). Tidak pernah null.</summary>
+    public static MushafType ResolveMushaf(string mushafKey)
+        => Find(mushafKey) ?? All[0];
+
+    /// <summary>Halaman untuk (surah, ayah) pada mushaf tertentu.
+    /// QuranData.FindPage menerima PAGE KEY (Page/Page_warsh/Page2), BUKAN mushaf key —
+    /// helper ini mencegah salah kirim mushaf key yang menyebabkan KeyNotFoundException.</summary>
+    public static int FindMushafPage(string mushafKey, int surah, int ayah)
+        => QuranData.FindPage(ResolveMushaf(mushafKey).PageKey, surah, ayah);
 }
 
 public sealed record VoiceTranslation(string Key, string Folder, string Display);

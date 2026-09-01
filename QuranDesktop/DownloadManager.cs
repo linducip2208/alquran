@@ -38,6 +38,8 @@ public sealed class DownloadManager
         public string? Rel { get; init; }
         public string? TextKey { get; init; }
         public int Surah { get; init; }
+        /// <summary>Untuk job Tafsir per ayat: 0 = semua ayat yang kurang pada surah.</summary>
+        public int Ayah { get; init; }
         public long MinBytes { get; init; } = 4096;
         public override string ToString() => Label;
     }
@@ -80,7 +82,7 @@ public sealed class DownloadManager
     {
         var list = items.ToList();
         int total = list.Count;
-        int done = 0, downloaded = 0, skipped = 0, failed = 0;
+        int downloaded = 0, skipped = 0, failed = 0;
         long bytes = 0;
         var errors = new List<string>();
         var sw = Stopwatch.StartNew();
@@ -88,14 +90,27 @@ public sealed class DownloadManager
         var tasks = new List<Task>(total);
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
+        // Semua counter (Done/Downloaded/Skipped/Failed) di-update ATOMIK dalam satu lock
+        // agar progress Report selalu konsisten: Done == Downloaded + Skipped + Failed.
+        object countLock = new();
+        int totalDone = 0;
+        void Count(int dl, int sk, int fl)
+        {
+            lock (countLock)
+            {
+                downloaded += dl; skipped += sk; failed += fl;
+                totalDone = downloaded + skipped + failed;
+            }
+        }
+
         void Report(string current)
         {
             if (progress == null) return;
             double speed = sw.Elapsed.TotalSeconds > 0.5 ? bytes / sw.Elapsed.TotalSeconds : 0;
-            var eta = speed > 1 && done > 0
-                ? TimeSpan.FromSeconds(Math.Max(0, total - done) / Math.Max(1.0, done / sw.Elapsed.TotalSeconds))
+            var eta = speed > 1 && totalDone > 0
+                ? TimeSpan.FromSeconds(Math.Max(0, total - totalDone) / Math.Max(1.0, totalDone / sw.Elapsed.TotalSeconds))
                 : TimeSpan.Zero;
-            progress.Report(new DownloadProgress(total, done, downloaded, skipped, failed, bytes, speed, eta, current));
+            progress.Report(new DownloadProgress(total, totalDone, downloaded, skipped, failed, bytes, speed, eta, current));
         }
 
         try
@@ -112,16 +127,21 @@ public sealed class DownloadManager
                         int outcome = await RunItemAsync(item, cancel.Token, _ => { });
                         switch (outcome)
                         {
-                            case 0: Interlocked.Increment(ref skipped); break;
+                            case 0:
+                                Count(0, 1, 0);
+                                break;
                             case 1:
-                                Interlocked.Increment(ref downloaded);
+                                Count(1, 0, 0);
                                 if (item.Kind == JobKind.File && item.Rel != null)
                                 {
                                     var fi = new FileInfo(KsuAudio.CachePath(item.Rel));
                                     if (fi.Exists) Interlocked.Add(ref bytes, fi.Length);
                                 }
                                 break;
-                            default: Interlocked.Increment(ref failed); lock (errors) { errors.Add(item.Label); } break;
+                            default:
+                                Count(0, 0, 1);
+                                lock (errors) { errors.Add(item.Label); }
+                                break;
                         }
                         Report(current);
                     }
@@ -131,13 +151,12 @@ public sealed class DownloadManager
                     }
                     catch (Exception ex)
                     {
-                        Interlocked.Increment(ref failed);
+                        Count(0, 0, 1);
                         lock (errors) { errors.Add(item.Label + " — " + ex.Message); }
                         Report(item.Label);
                     }
                     finally
                     {
-                        Interlocked.Increment(ref done);
                         gate.Release();
                     }
                 }, cancel.Token));
@@ -148,6 +167,8 @@ public sealed class DownloadManager
         {
         }
 
+        // lapor status final agar Done == Downloaded + Skipped + Failed == jumlah job (bila tak dibatalkan)
+        Report("");
         bool wasCancelled = ct.IsCancellationRequested || cancel.Token.IsCancellationRequested;
         return new DownloadResult(downloaded, skipped, failed, bytes, wasCancelled, errors);
     }
@@ -162,6 +183,7 @@ public sealed class DownloadManager
                 string key = item.TextKey!;
                 int surah = item.Surah;
                 if (OfflineContentService.Instance.GetTarjamaStatus(key, surah).Complete) return 0;
+                int before = OfflineContentService.Instance.GetTarjamaStatus(key, surah).AyatFound;
                 for (int attempt = 1; attempt <= MaxRetries; attempt++)
                 {
                     try
@@ -179,7 +201,9 @@ public sealed class DownloadManager
                         await Task.Delay(500 * attempt, ct);
                     }
                 }
-                return -1;
+                // gagal: buang hasil parsial agar "yang kurang" tidak salah hitung
+                OfflineContentService.Instance.InvalidateTarjama(key, surah);
+                return OfflineContentService.Instance.GetTarjamaStatus(key, surah).AyatFound > before ? 1 : -1;
             }
             case JobKind.Tafsir:
             {
@@ -187,29 +211,44 @@ public sealed class DownloadManager
                 int surah = item.Surah;
                 var st = OfflineContentService.Instance.GetTafsirStatus(key, surah);
                 if (st.Complete) return 0;
-                var missing = st.MissingAyat.ToList();
-                var gate = new SemaphoreSlim(Concurrency);
-                var tasks = new List<Task>();
-                int fetched = 0;
+                // scope per ayat (unduh 1 ayat) atau seluruh ayat yang kurang pada surah
+                List<int> missing = item.Ayah > 0
+                    ? (st.MissingAyat.Contains(item.Ayah) ? new List<int> { item.Ayah } : new List<int>())
+                    : st.MissingAyat.ToList();
+                if (missing.Count == 0) return 0;
+                var gate2 = new SemaphoreSlim(Math.Max(1, Concurrency));
+                var tasks2 = new List<Task>();
+                int fetched = 0, failAyat = 0;
                 foreach (var ayah in missing)
                 {
-                    await gate.WaitAsync(ct);
-                    tasks.Add(Task.Run(async () =>
+                    await gate2.WaitAsync(ct);
+                    tasks2.Add(Task.Run(async () =>
                     {
                         try
                         {
-                            await ProgramServices.Api.GetTafsirAsync(key, surah, ayah, ct);
-                            Interlocked.Increment(ref fetched);
+                            string text = await ProgramServices.Api.GetTafsirAsync(key, surah, ayah, ct);
+                            if (string.IsNullOrWhiteSpace(text)) Interlocked.Increment(ref failAyat);
+                            else Interlocked.Increment(ref fetched);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            Interlocked.Increment(ref failAyat);
+                            throw;
+                        }
+                        catch
+                        {
+                            Interlocked.Increment(ref failAyat);
                         }
                         finally
                         {
-                            gate.Release();
+                            gate2.Release();
                         }
                     }, ct));
                 }
-                await Task.WhenAll(tasks);
+                try { await Task.WhenAll(tasks2); }
+                catch (OperationCanceledException) { throw; }
                 OfflineContentService.Instance.InvalidateTafsir(key, surah);
-                return fetched > 0 ? 1 : 0;
+                return fetched > 0 ? 1 : (failAyat > 0 ? -1 : 0);
             }
             case JobKind.Hilites:
             {
@@ -348,18 +387,52 @@ public sealed class DownloadManager
     public static List<DownloadItem> BuildJobs(DownloadScope scope)
     {
         var items = new List<DownloadItem>();
-        var mushaf = MushafTypes.Find(scope.MushafKey) ?? MushafTypes.All[0];
+        var mushaf = MushafTypes.ResolveMushaf(scope.MushafKey);
         int pageCount = QuranData.PageCount(mushaf.PageKey);
 
         IEnumerable<int> Surahs() => scope.Surahs.Count > 0 ? scope.Surahs : Enumerable.Range(1, QuranData.SurahCount);
-        IEnumerable<int> Pages() => scope.Pages.Count > 0 ? scope.Pages.Where(p => p <= pageCount) : Enumerable.Range(1, pageCount);
+
+        // Halaman mushaf/hilite yang relevan: scope.Pages bila diisi;
+        // bila scope per surah → hanya halaman tempat ayat surah itu berada (bukan 604 halaman);
+        // bila full → seluruh halaman.
+        HashSet<int> ResolvePages()
+        {
+            if (scope.Pages.Count > 0)
+            {
+                return scope.Pages.Where(p => p >= 1 && p <= pageCount).ToHashSet();
+            }
+            if (scope.Surahs.Count > 0)
+            {
+                var set = new HashSet<int>();
+                foreach (var s in scope.Surahs)
+                {
+                    int n = QuranData.SurahAyahCount(s);
+                    for (int a = 1; a <= n; a++) set.Add(MushafTypes.FindMushafPage(mushaf.Key, s, a));
+                }
+                return set;
+            }
+            return Enumerable.Range(1, pageCount).ToHashSet();
+        }
 
         if (scope.Mushaf)
         {
             foreach (var mt in scope.AllMushafs ? (IEnumerable<MushafType>)MushafTypes.All : new[] { mushaf })
             {
                 int pc = QuranData.PageCount(mt.PageKey);
-                foreach (var p in scope.Pages.Count > 0 ? scope.Pages.Where(p => p <= pc) : Enumerable.Range(1, pc))
+                IEnumerable<int> pages;
+                if (scope.Pages.Count > 0) pages = scope.Pages.Where(p => p <= pc);
+                else if (scope.Surahs.Count > 0)
+                {
+                    var set = new HashSet<int>();
+                    foreach (var s in scope.Surahs)
+                    {
+                        int n = QuranData.SurahAyahCount(s);
+                        for (int a = 1; a <= n; a++) set.Add(Math.Min(QuranData.FindPage(mt.PageKey, s, a), pc));
+                    }
+                    pages = set;
+                }
+                else pages = Enumerable.Range(1, pc);
+                foreach (var p in pages)
                 {
                     items.Add(new DownloadItem
                     {
@@ -374,7 +447,7 @@ public sealed class DownloadManager
         }
         if (scope.Hilites)
         {
-            foreach (var p in Pages())
+            foreach (var p in ResolvePages())
             {
                 items.Add(new DownloadItem
                 {

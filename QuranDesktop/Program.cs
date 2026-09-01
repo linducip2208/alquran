@@ -11,6 +11,25 @@ static class Program
             return;
         }
 
+        if (args.Contains("--dlctest"))
+        {
+            ApplicationConfiguration.Initialize();
+            using var dlg = new Controls.DownloadCenterDialog("hafs", "id_indonesian", "indonesian", "husary");
+            dlg.Show();
+            int waited = 0;
+            while (!dlg.IsHandleCreated || waited < 15000)
+            {
+                Application.DoEvents();
+                Thread.Sleep(100);
+                waited += 100;
+            }
+            Thread.Sleep(6000);
+            Application.DoEvents();
+            dlg.Close();
+            Console.WriteLine("DLCTEST-OK");
+            return;
+        }
+
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += (s, e) => Log(e.Exception);
         AppDomain.CurrentDomain.UnhandledException += (s, e) => Log(e.ExceptionObject as Exception);
