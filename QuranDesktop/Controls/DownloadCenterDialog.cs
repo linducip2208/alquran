@@ -711,22 +711,8 @@ internal sealed class DownloadCenterDialog : Form
                 list.Add(svc.ScanTextKey("tafsir", _tafsirKey, "Tafsir " + (Tafsirs.Find(_tafsirKey)?.Display ?? _tafsirKey)));
                 return list;
             }, ct);
-
-            await Task.WhenAll(mushafTask, storageTask, textTask);
-
-            var mushafs = mushafTask.Result;
-            var storage = storageTask.Result;
-            var texts = textTask.Result;
-
-            SetCard("card.mushaf", "Mushaf", $"{mushafs[0].Pages}/{mushafs[0].PagesTotal} halaman", mushafs[0].Pages == mushafs[0].PagesTotal);
-            SetCard("card.hilite", "Hilite ayat", hiliteText(), null);
-            SetCard("card.arab", "Teks Arab", $"{texts[0].AyatFound}/{texts[0].AyatTotal} ayat", texts[0].AyatFound == texts[0].AyatTotal);
-            SetCard("card.trans", "Terjemahan aktif", $"{texts[1].AyatFound}/{texts[1].AyatTotal} ayat", texts[1].AyatFound == texts[1].AyatTotal);
-            SetCard("card.tafsir", "Tafsir aktif", $"{texts[2].AyatFound}/{texts[2].AyatTotal} ayat", texts[2].AyatFound == texts[2].AyatTotal);
-
-            // Surah summaries — pakai qari aktif untuk kolom audio
             var activeQari = Reciters.Find(_qareeKey) ?? Reciters.All[0];
-            var surahs = await Task.Run(() =>
+            var surahTask = Task.Run(() =>
             {
                 var list = new SurahOfflineSummary[QuranData.SurahCount];
                 for (int s = 1; s <= QuranData.SurahCount; s++)
@@ -735,13 +721,48 @@ internal sealed class DownloadCenterDialog : Form
                     list[s - 1] = svc.ScanSurah(s, _mushafKey,
                         new[] { _transKey }, new[] { _tafsirKey }, new[] { activeQari });
                 }
-                return list;
+                // deteksi file rusak di background (sekalian menghangatkan cache tarjama)
+                bool corrupt = false;
+                for (int s = 1; s <= QuranData.SurahCount && !corrupt; s++)
+                {
+                    var st = svc.GetTarjamaStatus(_transKey, s);
+                    corrupt = st.FileValid
+                              && st.AyatFound < QuranData.SurahAyahCount(s)
+                              && st.AyatFound > 0;
+                }
+                return (List: list, Corrupt: corrupt);
             }, ct);
+            var mk0 = MushafTypes.ResolveMushaf(_mushafKey);
+            var hiliteTask = Task.Run(() =>
+            {
+                int total = QuranData.PageCount(mk0.PageKey);
+                int ok = 0;
+                for (int p = 1; p <= total; p++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (svc.GetHiliteStatus(mk0.Key, p)) ok++;
+                }
+                return (Ok: ok, Total: total);
+            }, ct);
+
+            // SEMUA scan di background — UI thread tidak pernah memblokir IO disk
+            await Task.WhenAll(mushafTask, reciterTask, storageTask, textTask, surahTask, hiliteTask);
+
+            var mushafs = mushafTask.Result;
+            var storage = storageTask.Result;
+            var texts = textTask.Result;
+            var surahs = surahTask.Result.List;
+            var reciters = reciterTask.Result;
+
+            SetCard("card.mushaf", "Mushaf", $"{mushafs[0].Pages}/{mushafs[0].PagesTotal} halaman", mushafs[0].Pages == mushafs[0].PagesTotal);
+            SetCard("card.hilite", "Hilite ayat", $"{hiliteTask.Result.Ok}/{hiliteTask.Result.Total} halaman", hiliteTask.Result.Ok == hiliteTask.Result.Total);
+            SetCard("card.arab", "Teks Arab", $"{texts[0].AyatFound}/{texts[0].AyatTotal} ayat", texts[0].AyatFound == texts[0].AyatTotal);
+            SetCard("card.trans", "Terjemahan aktif", $"{texts[1].AyatFound}/{texts[1].AyatTotal} ayat", texts[1].AyatFound == texts[1].AyatTotal);
+            SetCard("card.tafsir", "Tafsir aktif", $"{texts[2].AyatFound}/{texts[2].AyatTotal} ayat", texts[2].AyatFound == texts[2].AyatTotal);
+
             _surahRows = surahs;
             FillSurahGrid();
 
-            // Audio card dari reciter scan (qari + voice)
-            var reciters = reciterTask.Result;
             _qariRows = reciters;
             FillQariGrid();
             var active = reciters.FirstOrDefault(r => r.Key == _qareeKey);
@@ -751,7 +772,7 @@ internal sealed class DownloadCenterDialog : Form
             }
 
             SetCard("card.storage", "Total storage", FormatSize(storage.TotalBytes), null);
-            SetCard("card.status", "Status", StatusSummaryText(surahs, mushafs[0], texts), null);
+            SetCard("card.status", "Status", StatusSummaryText(surahs, mushafs[0], texts, surahTask.Result.Corrupt), null);
             SetCard("card.hint", "Tips", "Buka tab Ayat untuk status per ayat (6.236 ayat). Klik baris untuk detail & tombol unduh per ayat.", null);
 
             FillStorageGrid(storage);
@@ -762,7 +783,8 @@ internal sealed class DownloadCenterDialog : Form
         }
         catch (Exception ex)
         {
-            // scan gagal → jangan biarkan UI kosong/membingungkan; isi placeholder jelas
+            // scan gagal → jangan biarkan UI kosong/membingungkan; isi placeholder jelas + catat ke log
+            Program.Log(ex);
             _lblProgress.Text = "Scan gagal: " + ex.Message;
             foreach (var key in new[] { "card.mushaf", "card.hilite", "card.arab", "card.trans", "card.tafsir", "card.audio", "card.storage", "card.status" })
             {
@@ -774,32 +796,23 @@ internal sealed class DownloadCenterDialog : Form
         {
             _scanning = false;
         }
-
-        string hiliteText()
-        {
-            var mk = MushafTypes.ResolveMushaf(_mushafKey);
-            int total = QuranData.PageCount(mk.PageKey);
-            int ok = 0;
-            for (int p = 1; p <= total; p++) if (svc.GetHiliteStatus(mk.Key, p)) ok++;
-            return $"{ok}/{total} halaman";
-        }
     }
 
-    private string StatusSummaryText(SurahOfflineSummary[] surahs, MushafPageSummary mushaf, List<TextKeySummary> texts)
+    /// <summary>Rescan penuh (dipakai tombol Scan Ulang & harness test).</summary>
+    public async Task RescanAsync()
+    {
+        OfflineContentService.Instance.InvalidateAll();
+        await RefreshAllAsync();
+    }
+
+    internal string ProgressText => _lblProgress.Text;
+
+    private string StatusSummaryText(SurahOfflineSummary[] surahs, MushafPageSummary mushaf, List<TextKeySummary> texts, bool corrupt = false)
     {
         if (surahs.All(s => s.Complete) && mushaf.Pages == mushaf.PagesTotal
             && texts.All(t => t.AyatFound == t.AyatTotal)) return "✓ Lengkap";
         bool any = surahs.Any(s => s.Partial || s.Complete) || mushaf.Pages > 0 || texts.Any(t => t.AyatFound > 0);
         if (!any) return "Belum diunduh";
-        bool corrupt = false;
-        var svc = OfflineContentService.Instance;
-        for (int s = 1; s <= QuranData.SurahCount && !corrupt; s++)
-        {
-            var st = svc.GetTarjamaStatus(_transKey, s);
-            corrupt = st.FileValid
-                      && st.AyatFound < QuranData.SurahAyahCount(s)
-                      && st.AyatFound > 0;
-        }
         return corrupt ? "! Ada file rusak/tidak lengkap" : "Sebagian";
     }
 
@@ -1248,22 +1261,28 @@ internal sealed class DownloadCenterDialog : Form
             return;
         }
         var row = _qariRows[idx];
-        string folder = row.Folder;
         var svc = OfflineContentService.Instance;
         _gridQariSurah.SuspendLayout();
         _gridQariSurah.Rows.Clear();
         for (int s = 1; s <= QuranData.SurahCount; s++)
         {
             int n = QuranData.SurahAyahCount(s);
-            int ok = 0;
-            for (int a = 1; a <= n; a++)
-            {
-                if (svc.GetAudioStatus(folder, s, a).IsValid) ok++;
-            }
+            // pakai hasil breakdown dari scan (tanpa IO disk di UI thread); fallback: hitung cepat
+            int ok = row.PerSurah != null ? row.PerSurah[s] : CountValidAyatFast(svc, row.Folder, s, n);
             _gridQariSurah.Rows.Add($"{s}. {SurahList.Get(s).EnglishName}", n,
                 $"{ok}/{n}", ok == n ? "✓ Lengkap" : ok > 0 ? "Sebagian" : "Belum Ada");
         }
         _gridQariSurah.ResumeLayout();
+    }
+
+    private static int CountValidAyatFast(OfflineContentService svc, string folder, int surah, int ayatCount)
+    {
+        int ok = 0;
+        for (int a = 1; a <= ayatCount; a++)
+        {
+            if (svc.GetAudioStatus(folder, surah, a).IsValid) ok++;
+        }
+        return ok;
     }
 
     private async Task RefreshStorageAsync()

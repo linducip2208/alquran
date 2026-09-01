@@ -36,7 +36,8 @@ public sealed record SurahOfflineSummary(
     public bool Partial { get; init; }
 }
 
-public sealed record ReciterSummary(string Key, string Folder, string Display, int Valid, int Total, long Bytes);
+/// <param name="PerSurah">Jumlah ayat valid per surah (index 1..114), null bila belum discan detail.</param>
+public sealed record ReciterSummary(string Key, string Folder, string Display, int Valid, int Total, long Bytes, int[]? PerSurah = null);
 
 public sealed record MushafPageSummary(string Key, string Display, int Pages, int PagesTotal, long Bytes);
 
@@ -371,22 +372,48 @@ public sealed class OfflineContentService
     public ReciterSummary ScanReciter(Reciter reciter)
         => ScanAudioFolder(reciter.Key, reciter.Folder, reciter.Display);
 
-    /// <summary>Scan folder audio per ayat (qari maupun voice translation) — hitung dari file aktual di disk.</summary>
+    /// <summary>
+    /// Scan folder audio per ayat (qari maupun voice translation) — hitung dari file aktual di disk.
+    /// CEPAT: satu Directory.EnumerateFiles per folder (bukan 6.236 FileInfo probe), plus
+    /// breakdown per surah ikut dihitung agar UI tidak perlu scan ulang saat klik qari.
+    /// </summary>
     public ReciterSummary ScanAudioFolder(string key, string folder, string display)
     {
-        int valid = 0;
+        var perSurah = new int[TotalSurah + 1]; // index 1..114
         long bytes = 0;
-        int total = TotalAyat;
-        for (int s = 1; s <= TotalSurah; s++)
+        int valid = 0;
+        try
         {
-            int n = QuranData.SurahAyahCount(s);
-            for (int a = 1; a <= n; a++)
+            string dir = Path.Combine(AudioDir, folder);
+            if (Directory.Exists(dir))
             {
-                var fi = new FileInfo(KsuAudio.CachePath(Path.Combine(folder, $"{s:D3}{a:D3}.mp3")));
-                if (fi.Exists && fi.Length >= 4096) { valid++; bytes += fi.Length; }
+                foreach (var name in Directory.EnumerateFiles(dir, "*.mp3", SearchOption.TopDirectoryOnly))
+                {
+                    // format nama: {surah:D3}{ayah:D3}.mp3 (7 digit)
+                    string file = Path.GetFileNameWithoutExtension(name);
+                    if (file.Length != 7 || !int.TryParse(file.AsSpan(0, 3), out int s) || !int.TryParse(file.AsSpan(3, 3), out int a))
+                    {
+                        continue;
+                    }
+                    if (s < 1 || s > TotalSurah || a < 1 || a > QuranData.SurahAyahCount(s))
+                    {
+                        continue;
+                    }
+                    long len;
+                    try { len = new FileInfo(name).Length; } catch { continue; }
+                    if (len >= 4096)
+                    {
+                        valid++;
+                        perSurah[s]++;
+                        bytes += len;
+                    }
+                }
             }
         }
-        return new ReciterSummary(key, folder, display, valid, total, bytes);
+        catch
+        {
+        }
+        return new ReciterSummary(key, folder, display, valid, TotalAyat, bytes, perSurah);
     }
 
     public MushafPageSummary ScanMushaf(MushafType mt)
