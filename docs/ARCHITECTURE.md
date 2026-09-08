@@ -2,22 +2,36 @@
 
 ## Runtime data
 
-`KsuAudio.DataRoot` is the single cache root:
+`KsuAudio.DataRoot` is the single cache root — **always beside the executable**
+so a portable copy stays self-contained:
 
 ```text
-%LOCALAPPDATA%\QuranDesktop\downloads
+<AppContext.BaseDirectory>\downloads
 ├── audio       # reciter audio
 ├── voice       # voice translations
 ├── mushaf      # page images
 ├── teks        # translations and Arabic text
 ├── tafsir      # tafsir responses
 ├── hilites     # verse coordinates
+├── fonts       # downloaded fonts
 ├── recordings  # user WAV recordings
 └── temp        # transient files and backups
 ```
 
-`OfflineMigrator` reads the previous `%LOCALAPPDATA%\QuranDesktop` layout once
-and merges files without overwriting newer files.
+`settings.json`, `progress.json`, and `error.log` are user preferences /
+diagnostics, not download content, and remain under
+`%LOCALAPPDATA%\QuranDesktop`.
+
+`KsuAudio.LegacyDownloadsRoot`
+(`%LOCALAPPDATA%\QuranDesktop\downloads`) is a **migration source only** — it
+is never used for new downloads, playback, scans, or storage reports.
+`OfflineMigrator` moves legacy content per-file: move when possible,
+cross-volume copy → flush → verify (size / SHA-256, PNG & JSON validation)
+→ delete source only after the destination is verified. Existing valid
+destinations are never overwritten. The `.migration-appdata-to-exe-v2-complete`
+marker is written only after a successful run; cancelled migrations stay
+resumable. Startup also requires a write-permission probe
+(`downloads\.write-test`) and refuses to fall back to AppData or TEMP.
 
 ## Provider boundary
 

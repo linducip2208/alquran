@@ -339,7 +339,7 @@ internal sealed class DownloadCenterDialog : Form
         btnVerify.Click += async (_, _) => { OfflineContentService.Instance.InvalidateAll(); await RefreshAllAsync(deep: true); };
         btnMissing.Click += async (_, _) => await DownloadMissingActiveAsync();
         btnAll.Click += async (_, _) => await StartProfileAsync(full: true);
-        btnFolder.Click += (_, _) => OpenFolder(OfflineContentService.Instance.CacheRoot);
+        btnFolder.Click += (_, _) => OpenFolder(KsuAudio.DataRoot);
         actions.Controls.AddRange(new Control[] { btnStart, btnScan, btnVerify, btnMissing, btnAll, btnFolder });
         layout.Controls.Add(actions, 0, 2);
         layout.SetColumnSpan(actions, 2);
@@ -697,7 +697,22 @@ internal sealed class DownloadCenterDialog : Form
         var btnCleanTemp = new Button { Text = "Bersihkan folder temp", Width = 160 };
         var btnDel = new Button { Text = "Hapus Resource Terpilih…", Width = 200 };
         var btnVerify = new Button { Text = "Verifikasi Semua", Width = 130 };
-        btnOpen.Click += (_, _) => OpenFolder(OfflineContentService.Instance.CacheRoot);
+        var btnImport = new Button { Text = "Impor cache lama dari AppData…", Width = 220 };
+        // (regression fix) label lokasi aktif agar user tidak bingung mencari file — EXACT KsuAudio.DataRoot
+        var lblRoot = new Label
+        {
+            AutoSize = true,
+            ForeColor = Color.DimGray,
+            Margin = new Padding(4, 8, 4, 0),
+            Text = "Lokasi konten offline: " + KsuAudio.DataRoot,
+        };
+        btnOpen.Click += (_, _) => OpenFolder(KsuAudio.DataRoot);
+        btnImport.Click += (_, _) =>
+        {
+            using var dlg = new MigrationDialog(force: true);
+            dlg.ShowDialog(this);
+            _ = RefreshStorageAsync();
+        };
         btnClean.Click += async (_, _) =>
         {
             if (MessageBox.Show(this, "Hapus semua file .part (unduhan belum selesai)?",
@@ -722,12 +737,13 @@ internal sealed class DownloadCenterDialog : Form
             await RefreshAllAsync(deep: true);
             MessageBox.Show(this, "Verifikasi selesai — inventory dimuat ulang dari file aktual.", "Verifikasi");
         };
-        buttons.Controls.AddRange(new Control[] { btnOpen, btnClean, btnCleanTemp, btnDel, btnVerify });
+        buttons.Controls.AddRange(new Control[] { btnOpen, btnClean, btnCleanTemp, btnDel, btnVerify, btnImport });
 
         page.Controls.Add(_gridStorage);
         page.Controls.Add(buttons);
         page.Controls.Add(Toolbar(
-            new Label { Text = "Hapus resource:", AutoSize = true, Margin = new Padding(2, 8, 2, 0) },
+            lblRoot,
+            new Label { Text = "Hapus resource:", AutoSize = true, Margin = new Padding(8, 8, 2, 0) },
             _cmbDelResource,
             new Label { Text = "Selalu ada konfirmasi sebelum hapus.", AutoSize = true, ForeColor = Color.DimGray, Margin = new Padding(8, 8, 4, 0) }));
         return page;

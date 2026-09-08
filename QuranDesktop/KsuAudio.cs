@@ -5,10 +5,9 @@ public static class KsuAudio
     private static string BaseUrl => ProviderEndpoints.QuranBaseUrl + "/ayat/mp3";
 
     /// <summary>Root data offline: satu lokasi dengan executable, di subfolder "downloads".
-    /// Semua konten offline permanen WAJIB di sini — bukan %TEMP%, bukan LocalApplicationData.</summary>
-    public static string DataRoot => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "QuranDesktop", "downloads");
+    /// Semua konten offline permanen WAJIB di sini — bukan %TEMP%, bukan LocalApplicationData.
+    /// (regression fix: DataRoot kembali ke samping EXE agar folder aplikasi portable utuh)</summary>
+    public static string DataRoot => Path.Combine(AppContext.BaseDirectory, "downloads");
 
     /// <summary>Root cache offline (alias DataRoot). Semua service offline membaca lewat sini.</summary>
     public static string CacheDir => DataRoot;
@@ -23,8 +22,18 @@ public static class KsuAudio
     /// DILARANG menulis file sementara di luar folder ini (bukan %TEMP%).</summary>
     public static string TempDir => Path.Combine(DataRoot, "temp");
 
-    /// <summary>Lokasi cache lama (pra-migrasi): %LOCALAPPDATA%\QuranDesktop\audio.
-    /// Hanya dibaca SEKALI oleh migrator; aplikasi tidak pernah menulis ke sini.</summary>
+    /// <summary>Sumber migrasi regression 1.4.x: %LOCALAPPDATA%\QuranDesktop\downloads.
+    /// HANYA SOURCE MIGRASI — dilarang dipakai untuk download baru, playback baru,
+    /// scan baru, storage report, atau tujuan tulis apa pun.</summary>
+    public static string LegacyDownloadsRoot => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "QuranDesktop", "downloads");
+
+    /// <summary>Lokasi pra-v1 (era sebelum migrasi pertama): %LOCALAPPDATA%\QuranDesktop
+    /// (folder qari langsung di root, tanpa subfolder downloads).
+    /// Hanya dibaca SEKALI oleh migrator; aplikasi tidak pernah menulis ke sini.
+    /// settings.json/progress.json/error.log di folder ini BUKAN konten download
+    /// dan TIDAK pernah dipindahkan.</summary>
     public static string LegacyCacheDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "QuranDesktop");
@@ -67,6 +76,22 @@ public static class KsuAudio
         {
             error = ex.Message;
             return false;
+        }
+    }
+
+    /// <summary>Root baru == legacy source (self-copy) → migrasi harus skip.</summary>
+    public static bool SamePathAsLegacy
+    {
+        get
+        {
+            try
+            {
+                return string.Equals(
+                    Path.TrimEndingDirectorySeparator(Path.GetFullPath(DataRoot)),
+                    Path.TrimEndingDirectorySeparator(Path.GetFullPath(LegacyDownloadsRoot)),
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
         }
     }
 

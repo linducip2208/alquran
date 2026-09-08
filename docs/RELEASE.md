@@ -10,7 +10,15 @@ Run from the repository root:
 
 The script creates a self-contained `win-x64` archive under `artifacts/` and a
 `.sha256` checksum file. Do not include the user's `downloads` folder in a
-release archive; it is created per-user under `%LOCALAPPDATA%` on first run.
+release archive; it is created beside the executable on first run.
+
+All download/offline content MUST live beside the executable
+(`<AppContext.BaseDirectory>\downloads`). Never ship or document a layout that
+stores downloads under `%LOCALAPPDATA%`, `%APPDATA%`, `%TEMP%`, Documents, or
+the Windows Downloads folder. `settings.json`, `progress.json`, and
+`error.log` are the only files allowed under `%LOCALAPPDATA%\QuranDesktop`.
+The Inno Setup installer therefore installs per-user into
+`{localappdata}\Programs\Quran Desktop` (writable) instead of Program Files.
 
 ## Before publishing
 
@@ -31,4 +39,6 @@ allows the user to verify the checksum before installing a new archive.
 
 If Inno Setup is installed, open `installer/QuranDesktop.iss` after running the
 publish script. The installer uses per-user privileges and installs the
-executable under Program Files while runtime data remains in `%LOCALAPPDATA%`.
+executable into `%LOCALAPPDATA%\Programs\Quran Desktop` — a writable location
+so the `downloads` folder can live beside the EXE. It never installs into
+Program Files, because download content must stay beside the executable.

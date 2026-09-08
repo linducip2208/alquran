@@ -95,16 +95,34 @@ Internet is required the first time content is opened; once cached it works offl
 
 ### User data location
 
-Offline content, recitation recordings, and temporary files are stored at:
+All download/offline content is stored in a **`downloads` folder beside
+`QuranDesktop.exe`** — one folder with the application, no hidden cache:
 
 ```
-%LOCALAPPDATA%\QuranDesktop\downloads
+D:\QuranDesktop\
+├── QuranDesktop.exe
+└── downloads\
+    ├── audio\      # reciter audio (47 reciters + audhubillah)
+    ├── voice\      # voice translations
+    ├── mushaf\     # mushaf page images
+    ├── teks\       # Arabic text & translations
+    ├── tafsir\     # per-verse tafsir
+    ├── hilites\    # highlight coordinates
+    ├── fonts\      # downloaded fonts
+    ├── recordings\ # recitation recordings
+    └── temp\       # transient files
 ```
 
-This keeps the application working when the executable is installed under
-`Program Files` or another read-only folder. Settings and progress are stored
-under `%LOCALAPPDATA%\QuranDesktop`. Use Backup & Restore to move settings,
-progress, and recordings to another computer.
+Settings (`settings.json`), progress (`progress.json`), and the log
+(`error.log`) remain under `%LOCALAPPDATA%\QuranDesktop` — those are not
+download content.
+
+**Automatic migration:** if old-version offline content is found under
+`%LOCALAPPDATA%\QuranDesktop\downloads`, the app moves it into the downloads
+folder beside the EXE (with progress, resumable, no re-downloading, never
+overwriting valid files). A **"Import legacy cache from AppData…"** button is
+available in Download Center → Storage for a manual re-scan. Use Backup &
+Restore to move settings, progress, and recordings to another computer.
 
 ### Provider endpoints
 

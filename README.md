@@ -103,16 +103,34 @@ Hasilnya arsip self-contained `win-x64` + checksum SHA-256 di folder `artifacts/
 
 ### Lokasi data pengguna
 
-Konten offline, rekaman tilawah, dan file sementara disimpan di:
+Seluruh konten download/offline disimpan di folder **`downloads` di samping
+`QuranDesktop.exe`** — satu folder dengan aplikasi, tanpa cache tersembunyi:
 
 ```
-%LOCALAPPDATA%\QuranDesktop\downloads
+D:\QuranDesktop\
+├── QuranDesktop.exe
+└── downloads\
+    ├── audio\      # audio qari (47 qari + audhubillah)
+    ├── voice\      # voice translation
+    ├── mushaf\     # gambar halaman mushaf
+    ├── teks\       # teks Arab & terjemahan
+    ├── tafsir\     # tafsir per ayat
+    ├── hilites\    # koordinat highlight
+    ├── fonts\      # font hasil unduhan
+    ├── recordings\ # rekaman tilawah
+    └── temp\       # file sementara
 ```
 
-Lokasi ini dipilih agar aplikasi tetap dapat berjalan jika executable berada di
-`Program Files` atau folder yang tidak dapat ditulis. Pengaturan dan progres
-berada di `%LOCALAPPDATA%\QuranDesktop`. Gunakan fitur Backup & Restore untuk
-memindahkan pengaturan, progres, dan rekaman ke komputer lain.
+Pengaturan (`settings.json`), progres (`progress.json`), dan log (`error.log`)
+tetap di `%LOCALAPPDATA%\QuranDesktop` — itu bukan konten download.
+
+**Migrasi otomatis:** bila ditemukan konten offline versi lama di
+`%LOCALAPPDATA%\QuranDesktop\downloads`, aplikasi memindahkannya ke folder
+downloads di samping EXE (dengan progress, resumable, tanpa unduhan ulang,
+tanpa menimpa file yang sudah valid). Tombol **"Impor cache lama dari
+AppData…"** tersedia di Pusat Unduhan → Penyimpanan untuk pemindaian ulang
+manual. Gunakan fitur Backup & Restore untuk memindahkan pengaturan, progres,
+dan rekaman ke komputer lain.
 
 ### Endpoint provider
 

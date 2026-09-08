@@ -11,22 +11,21 @@ static class Program
             return;
         }
 
-        // (C) uji izin tulis root downloads — TANPA fallback ke AppData/TEMP
+        // (C) uji izin tulis root downloads (samping EXE) — TANPA fallback ke AppData/TEMP
         if (!KsuAudio.EnsureWritableRoot(out string permError))
         {
             ApplicationConfiguration.Initialize();
             MessageBox.Show(
-                "Folder aplikasi tidak dapat ditulis.\n" +
-                "Pindahkan Quran Desktop ke folder yang memiliki izin tulis.\n\n" +
+                "Folder aplikasi tidak dapat ditulis.\n\n" +
+                "Quran Desktop menyimpan seluruh konten offline di folder\n" +
+                "'downloads' yang berada di samping QuranDesktop.exe.\n" +
+                "Pindahkan aplikasi ke folder yang memiliki izin tulis.\n\n" +
                 $"Lokasi: {KsuAudio.DataRoot}\nPenyebab: {permError}",
                 "Quran Desktop — Folder tidak dapat ditulis",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             Environment.ExitCode = 2;
             return;
         }
-
-        // migrasi cache lama (%LOCALAPPDATA%) → downloads/ di samping exe, sekali di background
-        OfflineMigrator.EnsureStarted();
 
         if (args.Contains("--dlctest"))
         {
@@ -78,6 +77,16 @@ static class Program
             Environment.ExitCode = ok ? 0 : 1;
             return;
         }
+
+        // (regression fix) konten download lama di %LOCALAPPDATA% dipindah ke samping EXE:
+        // dialog progress tampil hanya bila cache legacy benar-benar ada & migrasi belum selesai
+        if (OfflineMigrator.HasLegacyData)
+        {
+            ApplicationConfiguration.Initialize();
+            using var dlg = new Controls.MigrationDialog();
+            dlg.ShowDialog();
+        }
+        OfflineMigrator.EnsureStarted();
 
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += (s, e) => Log(e.Exception);
