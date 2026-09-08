@@ -92,7 +92,7 @@ internal sealed class PrayerTimesDialog : Form
     {
         try
         {
-            string url = $"https://api.aladhan.com/v1/timingsByCity?city={Uri.EscapeDataString(City)}"
+            string url = $"{ProviderEndpoints.PrayerBaseUrl}/v1/timingsByCity?city={Uri.EscapeDataString(City)}"
                 + $"&country={Uri.EscapeDataString(Country)}&method={Method}";
             using var resp = await ProgramServices.Http.GetAsync(url, CancellationToken.None);
             resp.EnsureSuccessStatusCode();

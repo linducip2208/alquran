@@ -93,7 +93,8 @@ internal sealed class DailyAyahDialog : Form
             if (string.IsNullOrWhiteSpace(av))
             {
                 var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", _ayah.S, CancellationToken.None);
-                arabic.TryGetValue(_ayah.A, out av);
+                if (arabic.TryGetValue(_ayah.A, out var downloadedArabic) && downloadedArabic != null)
+                    av = downloadedArabic;
             }
             if (!string.IsNullOrWhiteSpace(av)) _lblArab.Text = av;
 
@@ -122,7 +123,8 @@ internal sealed class DailyAyahDialog : Form
             if (string.IsNullOrWhiteSpace(arab))
             {
                 var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", _ayah.S, CancellationToken.None);
-                arabic.TryGetValue(_ayah.A, out arab);
+                if (arabic.TryGetValue(_ayah.A, out var downloadedArabic) && downloadedArabic != null)
+                    arab = downloadedArabic;
             }
             var t = ProgramServices.ActiveTranslationKey;
             string arti = "";
@@ -147,7 +149,8 @@ internal sealed class DailyAyahDialog : Form
             if (string.IsNullOrWhiteSpace(arab))
             {
                 var arabic = await ProgramServices.Api.GetSurahTarjamaAsync("ar_ayat", _ayah.S, CancellationToken.None);
-                arabic.TryGetValue(_ayah.A, out arab);
+                if (arabic.TryGetValue(_ayah.A, out var downloadedArabic) && downloadedArabic != null)
+                    arab = downloadedArabic;
             }
             var t = ProgramServices.ActiveTranslationKey;
             string arti = "";

@@ -28,6 +28,15 @@ public static class Translations
         new("pr_tagi", "Persia", true),
         new("ur_gl", "Urdu", true),
         new("ml_abdulhameed", "Malayalam", false),
+        new("bn_bengali", "Bengali — Muhiuddin Khan", false),
+        new("so_abduh", "Somali — Abduh", false),
+        new("ta_tamil", "Tamil — Jan Turst", false),
+        new("ha_gumi", "Hausa — Gumi", false),
+        new("nl_keyzer", "Belanda — Keyzer", false),
+        new("sw_barwani", "Swahili — Barwani", false),
+        new("th_thai", "Thai", false),
+        new("uz_sodik", "Uzbek — Sodik", false),
+        new("zh_jian", "Mandarin — Ma Jian", false),
     };
 
     public static TranslationOption? Find(string key) => All.FirstOrDefault(t => t.Key == key);

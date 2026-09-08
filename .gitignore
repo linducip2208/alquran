@@ -8,3 +8,6 @@ publish/
 
 # dist build output (zip + copy untuk distribusi) — tidak di-commit
 QuranDesktop/dist/
+
+# distribusi build output
+artifacts/

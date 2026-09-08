@@ -2,11 +2,13 @@ namespace QuranDesktop;
 
 public static class KsuAudio
 {
-    private const string BaseUrl = "https://quran.ksu.edu.sa/ayat/mp3";
+    private static string BaseUrl => ProviderEndpoints.QuranBaseUrl + "/ayat/mp3";
 
     /// <summary>Root data offline: satu lokasi dengan executable, di subfolder "downloads".
     /// Semua konten offline permanen WAJIB di sini — bukan %TEMP%, bukan LocalApplicationData.</summary>
-    public static string DataRoot => Path.Combine(AppContext.BaseDirectory, "downloads");
+    public static string DataRoot => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "QuranDesktop", "downloads");
 
     /// <summary>Root cache offline (alias DataRoot). Semua service offline membaca lewat sini.</summary>
     public static string CacheDir => DataRoot;
@@ -25,7 +27,7 @@ public static class KsuAudio
     /// Hanya dibaca SEKALI oleh migrator; aplikasi tidak pernah menulis ke sini.</summary>
     public static string LegacyCacheDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "QuranDesktop", "audio");
+        "QuranDesktop");
 
     public static string AyahUrl(string reciterFolder, int surah, int ayah)
         => $"{BaseUrl}/{reciterFolder}/{surah:D3}{ayah:D3}.mp3";

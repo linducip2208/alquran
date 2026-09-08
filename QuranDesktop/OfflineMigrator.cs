@@ -3,8 +3,9 @@ using System.Collections.Concurrent;
 namespace QuranDesktop;
 
 /// <summary>
-/// Migrasi cache lama (%LOCALAPPDATA%\QuranDesktop\audio) ke root baru di samping exe
-/// (downloads/). Idempotent: resource yang sudah ada di root baru TIDAK ditimpa.
+/// Migrasi cache lama (%LOCALAPPDATA%\QuranDesktop) ke root baru per-user
+/// (%LOCALAPPDATA%\QuranDesktop\downloads). Idempotent: resource yang sudah ada
+/// di root baru TIDAK ditimpa.
 /// Best-effort & tidak pernah melempar exception ke caller.
 /// </summary>
 public static class OfflineMigrator

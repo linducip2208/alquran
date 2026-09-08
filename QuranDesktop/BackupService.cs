@@ -5,6 +5,14 @@ namespace QuranDesktop;
 
 internal static class BackupService
 {
+    private const int CurrentVersion = 2;
+
+    private sealed record BackupManifest(
+        int Version,
+        DateTime CreatedUtc,
+        string[] Files,
+        Dictionary<string, string> Sha256);
+
     public static string DataDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "QuranDesktop");
@@ -16,14 +24,35 @@ internal static class BackupService
             Directory.CreateDirectory(Path.GetDirectoryName(zipPath)!);
             using var fs = File.Create(zipPath);
             using var zip = new ZipArchive(fs, ZipArchiveMode.Create);
+            var files = new List<string>();
+            var hashes = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var name in new[] { "settings.json", "progress.json" })
             {
                 var p = Path.Combine(DataDir, name);
                 if (File.Exists(p))
                 {
                     zip.CreateEntryFromFile(p, name);
+                    files.Add(name);
+                    hashes[name] = HashFile(p);
                 }
             }
+
+            var recordings = Path.Combine(KsuAudio.CacheDir, "recordings");
+            if (Directory.Exists(recordings))
+            {
+                foreach (var recording in Directory.EnumerateFiles(recordings, "*.wav", SearchOption.TopDirectoryOnly))
+                {
+                    var name = "recordings/" + Path.GetFileName(recording);
+                    zip.CreateEntryFromFile(recording, name);
+                    files.Add(name);
+                    hashes[name] = HashFile(recording);
+                }
+            }
+
+            var manifest = new BackupManifest(CurrentVersion, DateTime.UtcNow, files.ToArray(), hashes);
+            var entry = zip.CreateEntry("manifest.json");
+            using var writer = new StreamWriter(entry.Open());
+            writer.Write(JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
         });
     }
 
@@ -33,33 +62,70 @@ internal static class BackupService
         {
             using var fs = File.OpenRead(zipPath);
             using var zip = new ZipArchive(fs, ZipArchiveMode.Read);
-            foreach (var entry in zip.Entries)
+            var manifestEntry = zip.GetEntry("manifest.json")
+                ?? throw new InvalidDataException("Backup tidak memiliki manifest.");
+            BackupManifest? manifest;
+            using (var reader = new StreamReader(manifestEntry.Open()))
             {
-                if (entry.Name is "settings.json" or "progress.json")
+                manifest = JsonSerializer.Deserialize<BackupManifest>(reader.ReadToEnd());
+            }
+            if (manifest is null || manifest.Version is < 1 or > CurrentVersion)
+                throw new InvalidDataException("Versi backup tidak didukung.");
+
+            var temp = Path.Combine(DataDir, ".restore-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(temp);
+            try
+            {
+                foreach (var name in manifest.Files)
                 {
-                    Directory.CreateDirectory(DataDir);
-                    entry.ExtractToFile(Path.Combine(DataDir, entry.Name), overwrite: true);
+                    if (!IsSafeName(name))
+                        throw new InvalidDataException("Backup berisi file yang tidak diizinkan.");
+
+                    var entry = zip.GetEntry(name)
+                        ?? throw new InvalidDataException($"File backup hilang: {name}");
+                    var target = Path.Combine(temp, name.Replace('/', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    entry.ExtractToFile(target, overwrite: true);
+                    if (manifest.Sha256?.TryGetValue(name, out var expected) == true
+                        && !string.Equals(HashFile(target), expected, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException($"Checksum backup tidak cocok: {name}");
                 }
+
+                foreach (var json in new[] { "settings.json", "progress.json" })
+                {
+                    var path = Path.Combine(temp, json);
+                    if (!File.Exists(path)) continue;
+                    using var document = JsonDocument.Parse(File.ReadAllText(path));
+                }
+
+                foreach (var name in manifest.Files)
+                {
+                    var source = Path.Combine(temp, name.Replace('/', Path.DirectorySeparatorChar));
+                    var destination = Path.Combine(DataDir, name.Replace('/', Path.DirectorySeparatorChar));
+                    Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                    File.Move(source, destination, overwrite: true);
+                }
+            }
+            finally
+            {
+                try { if (Directory.Exists(temp)) Directory.Delete(temp, true); } catch { }
             }
         });
     }
 
-    public static async Task<(string Tag, string Url)?> CheckUpdateAsync(CancellationToken ct)
+    private static bool IsSafeName(string name)
     {
-        try
-        {
-            using var resp = await ProgramServices.Http.GetAsync(
-                "https://api.github.com/repos/linducip2208/alquran/releases/latest", ct);
-            resp.EnsureSuccessStatusCode();
-            using var stream = await resp.Content.ReadAsStreamAsync(ct);
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
-            string tag = doc.RootElement.TryGetProperty("tag_name", out var t) ? t.GetString() ?? "" : "";
-            string url = doc.RootElement.TryGetProperty("html_url", out var u) ? u.GetString() ?? "" : "";
-            if (tag.Length > 0) return (tag, url);
-        }
-        catch
-        {
-        }
-        return null;
+        if (name is "settings.json" or "progress.json") return true;
+        if (!name.StartsWith("recordings/", StringComparison.Ordinal)
+            || name.Length <= "recordings/".Length) return false;
+        var file = name["recordings/".Length..];
+        return file.IndexOfAny(new[] { '/', '\\' }) < 0
+            && file != "." && file != "..";
+    }
+
+    private static string HashFile(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream));
     }
 }

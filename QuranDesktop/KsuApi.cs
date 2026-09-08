@@ -8,7 +8,7 @@ public sealed record SearchResult(int Surah, int Ayah, string Text);
 
 public sealed class KsuApi
 {
-    public const string InterfaceUrl = "https://quran.ksu.edu.sa/interface.php?ui=pc";
+    public static string InterfaceUrl => ProviderEndpoints.QuranInterfaceUrl;
 
     private readonly HttpClient _http = CreateClient();
     private readonly ConcurrentDictionary<string, string> _tafsirCache = new();
@@ -25,7 +25,7 @@ public sealed class KsuApi
         var c = new HttpClient();
         c.Timeout = TimeSpan.FromSeconds(45);
         c.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 QuranDesktop/2.0");
-        c.DefaultRequestHeaders.Referrer = new Uri("https://quran.ksu.edu.sa/index.php?ui=1&l=en");
+        c.DefaultRequestHeaders.Referrer = new Uri(ProviderEndpoints.QuranBaseUrl + "/index.php?ui=1&l=en");
         return c;
     }
 

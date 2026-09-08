@@ -33,6 +33,8 @@ public static class OfflineSelfTest
         Console.WriteLine();
 
         CheckCounts();
+        UpdateVersionComparison();
+        NavigationHistoryTest();
         ReciterIntegrity();
         AudioFileNameParser();
         PngValidation();
@@ -48,6 +50,7 @@ public static class OfflineSelfTest
         ScanSurahAllMushafs();
         MigratorTest();
         DownloadEngineAsync().GetAwaiter().GetResult();
+        BackupRoundTripAsync().GetAwaiter().GetResult();
         StorageActualBytes();
         FinalAudit();
         LegacyCompatibility();
@@ -56,6 +59,50 @@ public static class OfflineSelfTest
         Console.WriteLine($"=== Hasil: {_pass} PASS, {_fail} FAIL ===");
         foreach (var f in _failedNames) Console.WriteLine("  FAIL: " + f);
         return _fail == 0 ? 0 : 1;
+    }
+
+    private static void UpdateVersionComparison()
+    {
+        Console.WriteLine("-- Perbandingan versi update");
+        Check("versi minor 1.10 lebih baru dari 1.9",
+            UpdateService.IsNewerVersion("v1.10.0", "1.9.0"));
+        Check("versi sama bukan update",
+            !UpdateService.IsNewerVersion("v1.4.0", "1.4.0"));
+        Check("suffix prerelease tidak crash",
+            UpdateService.IsNewerVersion("v2.0.0-beta", "1.9.0"));
+    }
+
+    private static async Task BackupRoundTripAsync()
+    {
+        Console.WriteLine("-- Backup manifest & restore");
+        string path = Path.Combine(KsuAudio.TempDir, "selftest-backup.quranbak");
+        try
+        {
+            await BackupService.ExportAsync(path);
+            Check("backup archive dibuat", File.Exists(path));
+            await BackupService.ImportAsync(path);
+            Check("backup archive dapat dipulihkan", true);
+        }
+        catch (Exception ex)
+        {
+            Check("backup archive dapat dipulihkan", false, ex.Message);
+        }
+        finally
+        {
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+        }
+    }
+
+    private static void NavigationHistoryTest()
+    {
+        Console.WriteLine("-- Navigation history");
+        var history = new NavigationHistory();
+        history.Push(1, 1);
+        history.Push(2, 3);
+        history.Push(4, 5);
+        Check("history back", history.TryBack(out var back) && back == (2, 3));
+        Check("history forward", history.TryForward(out var forward) && forward == (4, 5));
+        Check("history tidak forward di ujung", !history.TryForward(out _));
     }
 
     // 1. Counter Quran = 6.236 & per-surah benar
@@ -101,12 +148,12 @@ public static class OfflineSelfTest
             $"got {QuranData.FindPage("Page", 2, 282)}");
     }
 
-    // 1b. (AH #3,#4,#6) Folder qari unik & jumlah 43 — tidak crash
+    // 1b. (AH #3,#4,#6) Folder qari unik & jumlah 47 — tidak crash
     private static void ReciterIntegrity()
     {
         Console.WriteLine("-- Integritas daftar qari");
         int count = Reciters.All.Count;
-        Check("Reciters.All.Count = 43 (bukan 47 — voice translation terpisah)", count == 43, $"got {count}");
+        Check("Reciters.All.Count = 47 (sinkron quraa_map KSU — voice translation terpisah)", count == 47, $"got {count}");
         Check("VoiceTranslations.All tidak tercampur Reciters.All",
             Reciters.All.All(r => VoiceTranslations.All.All(v => v.Key != r.Key)),
             "ada key yang sama antara qari dan voice");
@@ -208,12 +255,14 @@ public static class OfflineSelfTest
         Check("root downloads dapat ditulis (write-test sukses)", ok, err);
         Check("tidak ada sisa .write-test", !File.Exists(Path.Combine(KsuAudio.DataRoot, ".write-test")));
         // DataRoot pasti di samping exe — bukan AppData/TEMP
-        string baseDir = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
         string root = Path.TrimEndingDirectorySeparator(KsuAudio.DataRoot);
-        Check("DataRoot = <exe>/downloads", root == Path.Combine(baseDir, "downloads"),
+        string expectedRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "QuranDesktop", "downloads");
+        Check("DataRoot = LocalApplicationData/QuranDesktop/downloads", root == Path.TrimEndingDirectorySeparator(expectedRoot),
             KsuAudio.DataRoot);
-        Check("DataRoot TIDAK di AppData/TEMP",
-            !root.Contains("AppData", StringComparison.OrdinalIgnoreCase)
+        Check("DataRoot bukan folder executable atau Temp",
+            !root.StartsWith(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase)
             && !root.Contains("Temp", StringComparison.OrdinalIgnoreCase),
             KsuAudio.DataRoot);
     }
@@ -295,9 +344,10 @@ public static class OfflineSelfTest
     {
         Console.WriteLine("-- Layout path audio/voice & root downloads");
         var svc = OfflineContentService.Instance;
-        Check("DataRoot = exe/downloads (bukan LocalApplicationData)",
+        Check("DataRoot = LocalApplicationData/QuranDesktop/downloads",
             KsuAudio.CacheDir.EndsWith(Path.Combine("downloads") + "", StringComparison.OrdinalIgnoreCase)
-            && KsuAudio.CacheDir.StartsWith(AppContext.BaseDirectory, StringComparison.OrdinalIgnoreCase),
+            && KsuAudio.CacheDir.Contains("QuranDesktop", StringComparison.OrdinalIgnoreCase)
+            && !KsuAudio.CacheDir.StartsWith(AppContext.BaseDirectory, StringComparison.OrdinalIgnoreCase),
             KsuAudio.CacheDir);
 
         string recFolder = "SelfTest_Reciter";
@@ -1082,9 +1132,9 @@ public static class OfflineSelfTest
         Check("ScanMushaf(tajweed) summary pakai key aktif",
             sumTajweed.Key == "tajweed" && sumTajweed.PagesTotal == QuranData.PageCount("Page2"));
 
-        // (AH #29) qari tidak pernah 47: Reciters.All == 43 && VoiceTranslations.All == 4
-        Check("qari = 43 dan voice = 4 (43+4 ≠ 47 dalam satu daftar)",
-            Reciters.All.Count == 43 && VoiceTranslations.All.Count == 4,
+        // (AH #29) qari selalu sinkron quraa_map KSU: Reciters.All == 47 && VoiceTranslations.All == 4
+        Check("qari = 47 dan voice = 4 (terpisah, bukan 51 dalam satu daftar)",
+            Reciters.All.Count == 47 && VoiceTranslations.All.Count == 4,
             $"qari={Reciters.All.Count} voice={VoiceTranslations.All.Count}");
 
         // (AH #28) scan progress record: Index/Total/Stage

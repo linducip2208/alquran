@@ -95,8 +95,17 @@ static class Program
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "QuranDesktop");
             Directory.CreateDirectory(dir);
-            File.AppendAllText(Path.Combine(dir, "error.log"),
-                DateTime.Now + Environment.NewLine + ex + Environment.NewLine + "----" + Environment.NewLine);
+            var logPath = Path.Combine(dir, "error.log");
+            if (File.Exists(logPath) && new FileInfo(logPath).Length > 5 * 1024 * 1024)
+            {
+                var oldPath = Path.Combine(dir, "error.previous.log");
+                try { File.Delete(oldPath); } catch { }
+                try { File.Move(logPath, oldPath); } catch { }
+            }
+            File.AppendAllText(logPath,
+                DateTime.Now.ToString("O") + " [" + Environment.ProcessId + "]"
+                + Environment.NewLine + ex + Environment.NewLine + "----" + Environment.NewLine,
+                System.Text.Encoding.UTF8);
         }
         catch
         {

@@ -8,7 +8,7 @@ public static class QuranComApi
 {
     public static async Task<List<WbwWord>> GetWordsAsync(int surah, int ayah, CancellationToken ct)
     {
-        string url = $"https://api.quran.com/api/v4/verses/by_key/{surah}:{ayah}"
+        string url = $"{ProviderEndpoints.WordByWordBaseUrl}/api/v4/verses/by_key/{surah}:{ayah}"
             + "?words=true&word_fields=text_uthmani,translation&translations=134";
 
         using var resp = await ProgramServices.Http.GetAsync(url, ct);

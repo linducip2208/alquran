@@ -1,0 +1,22 @@
+name: Quran Desktop CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-selftest:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '7.0.x'
+      - name: Restore
+        run: dotnet restore QuranDesktop/QuranDesktop.csproj
+      - name: Build
+        run: dotnet build QuranDesktop/QuranDesktop.csproj --configuration Release --no-restore
+      - name: Offline self-test
+        run: dotnet run --project QuranDesktop/QuranDesktop.csproj --configuration Release --no-build -- --selftest

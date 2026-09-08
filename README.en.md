@@ -16,8 +16,8 @@ A desktop Qur'an application (Windows Forms / C# .NET 7) rebuilt from the offici
 **Portable (no installation required):** [Google Drive — QuranDesktop portable](https://drive.google.com/drive/folders/1A0AvGWNaHMU2bZtrvoES25RUh-pr6VMx?usp=sharing)
 
 Alternatives:
-- [GitHub Releases](https://github.com/linducip2208/alquran/releases) — download `QuranDesktop-v1.3.0-win-x64.exe`
-- [Directly from the repo (Git LFS)](https://github.com/linducip2208/alquran/raw/main/QuranDesktop/bin/Release/net7.0-windows/win-x64/publish/QuranDesktop.exe)
+- [GitHub Releases](https://github.com/linducip2208/alquran/releases) — download the latest win-x64 archive
+- Build it yourself: `.\scripts\publish.ps1` (see below)
 
 ---
 
@@ -29,14 +29,19 @@ Alternatives:
 | Mushaf Types | Hafs, Rewayat Warsh, Hafs Tajweed (604 pages, original KSU server images) |
 | Mushaf Interaction | Click any verse directly on the page → golden highlight bubble + blue rings for search results |
 | Overlay | Floating translation text at each verse position on the page |
-| Reciters | **43 reciters** + Warsh, Murattal/Mujawwad/Teacher variants (Husary, Abdul Basit, Minshawi, Sudais, Maher, Afasy, etc.) |
-| Translations | **22 languages** — English (Saheeh International), Indonesian, Malay, Arabic (4 variants), Urdu, Russian, etc. |
+| Reciters | **47 reciters** — full parity with the KSU site — plus Warsh, Murattal/Mujawwad/Teacher/32kbps variants (Husary, Abdul Basit, Minshawi, Sudais, Maher, Afasy, **Al-Banna, Basfar 32k, Al-Akhdar, Ayyoub 32k**, etc.) |
+| Translations | **31 languages** — English (Saheeh International), Indonesian, Malay, Arabic (4 variants), Urdu, Russian, **Bengali, Somali, Tamil, Hausa, Dutch (Keyzer), Swahili, Thai, Uzbek, Mandarin** |
 | Tafsir | **9 books** — Tafsir Jalalain (Indonesian), Al-Muyassar, Ibn Kathir, As-Sa'dy, Al-Baghawy, Al-Qortoby, At-Tabary, I'rab, Tafhim (Russian) |
 | Inline Tafsir | Tafsir displayed under the selected verse in Text mode |
 | Talaqaa (Voice) | Voice translations: English, French, Urdu, Bosnian |
-| Audio Player | Per-verse, auto-advance across verses & surahs, repeat 1×–10×/∞, **verse-range repeat**, **teacher mode** (periodic replay), automatic basmalah & audhubillah, volume, **playback speed 0.5×–2×** |
+| Audio Player | Per-verse, auto-advance across verses & surahs, repeat 1×–10×/∞, **verse-range repeat**, **teacher mode** (periodic replay), automatic basmalah & audhubillah (exact KSU reciter rules), volume, **playback speed 0.5×–2×** |
+| **Inter-Verse Delay** | 0.5 / 1 / 1.5 second gap between repeats & verses (KSU `repeat_waiting`) |
+| **Auto-Stop Audio** | Stop automatically after finishing a **page / surah / juz** (KSU `sel_autoStop`) |
+| **Hizb Navigation** | Jump to **hizb 1–60 + quarter** (start/¼/½/¾) — 240 precise divisions; indicator follows the current verse |
+| **Range Memorization Test** | *Mushaf Test* mode: random verse from a selected range, masked → reveal answer (Arabic + translation) + play audio |
+| **Print Mushaf Page** | Print preview of the current mushaf page (full-resolution image, auto-download) |
 | Show/Hide | Toggle translation, inline tafsir, tafsir panel, mushaf overlay |
-| Navigation | Surah, Verse, Page (spread), Juz — just like the original site |
+| Navigation | Surah, Verse, Page (spread), Juz, **Hizb** — just like the original site |
 | Search | Search the entire Qur'an → jump to verse + **results marked with blue rings in the mushaf** |
 | Hifz Mode | Random memorization quiz from a surah/verse range, hide/show text, play audio |
 | Khatam Target | 30-juz progress + daily streak — pages auto-recorded as you open them |
@@ -77,7 +82,36 @@ Alternatives:
 2. `dotnet build QuranDesktop -c Release`
 3. `dotnet run --project QuranDesktop`
 
+**Build for distribution:**
+
+```powershell
+.\scripts\publish.ps1 -Version 1.4.0
+```
+
+Produces a self-contained `win-x64` archive + SHA-256 checksum under `artifacts/`
+(see [docs/RELEASE.md](docs/RELEASE.md) for the full release checklist).
+
 Internet is required the first time content is opened; once cached it works offline.
+
+### User data location
+
+Offline content, recitation recordings, and temporary files are stored at:
+
+```
+%LOCALAPPDATA%\QuranDesktop\downloads
+```
+
+This keeps the application working when the executable is installed under
+`Program Files` or another read-only folder. Settings and progress are stored
+under `%LOCALAPPDATA%\QuranDesktop`. Use Backup & Restore to move settings,
+progress, and recordings to another computer.
+
+### Provider endpoints
+
+Compatible endpoints can be changed under **Settings → Provider & Endpoint**.
+The values apply to new requests; restart the application to reload mushaf
+configuration. URLs must use `http` or `https`. Invalid values fall back to
+the compatible defaults.
 
 ---
 
@@ -88,8 +122,9 @@ All content is fetched directly from the **[quran.ksu.edu.sa](https://quran.ksu.
 - **Audio:** `https://quran.ksu.edu.sa/ayat/mp3/{reciter}/{SSS}{AAA}.mp3` (+ audhubillah & basmalah, voice translations)
 - **Mushaf images:** `https://quran.ksu.edu.sa/ayat/safahat1/{page}.png` (Hafs), `/warsh/{page}.png`, `/tajweed_png/{page}.png`
 - **Tafsir / translations / search / highlight coordinates:** `https://quran.ksu.edu.sa/interface.php?ui=pc&do=tafsir|tarjama|search|hilites`
-- **Page & juz metadata:** `https://quran.ksu.edu.sa/js/quran-data.js` (source: [Tanzil.net](https://tanzil.net), GPL)
+- **Page, juz & hizb metadata:** `https://quran.ksu.edu.sa/js/quran-data.js` (source: [Tanzil.net](https://tanzil.net), GPL)
 - **Web tafsir links:** `https://quran.ksu.edu.sa/tafseer/{book}/sura{s}-aya{a}.html`
+- **Reciter map & reciter rules** (47 reciters, basmalah exceptions, Khaleefa restriction): extracted from the site script `provider/index.php?g=scr`
 
 ## Credits
 

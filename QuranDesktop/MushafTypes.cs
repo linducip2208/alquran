@@ -6,9 +6,9 @@ public static class MushafTypes
 {
     public static readonly List<MushafType> All = new()
     {
-        new("hafs", "Hafs", "https://quran.ksu.edu.sa/ayat/safahat1/", "Page", 690),
-        new("warsh", "Rewayat Warsh", "https://quran.ksu.edu.sa/warsh/", "Page_warsh", 760),
-        new("tajweed", "Hafs Tajweed", "https://quran.ksu.edu.sa/tajweed_png/", "Page2", 720),
+        new("hafs", "Hafs", ProviderEndpoints.QuranBaseUrl + "/ayat/safahat1/", "Page", 690),
+        new("warsh", "Rewayat Warsh", ProviderEndpoints.QuranBaseUrl + "/warsh/", "Page_warsh", 760),
+        new("tajweed", "Hafs Tajweed", ProviderEndpoints.QuranBaseUrl + "/tajweed_png/", "Page2", 720),
     };
 
     public static MushafType? Find(string key) => All.FirstOrDefault(m => m.Key == key);

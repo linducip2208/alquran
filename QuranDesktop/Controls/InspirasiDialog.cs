@@ -79,7 +79,7 @@ internal sealed class InspirasiDialog : Form
     private void LoadSelectedCategory()
     {
         if (_lstKategori.SelectedItem is not ComboItem item) return;
-        string key = (string)item.Value;
+        string key = item.Value as string ?? "";
         _lstAyat.Items.Clear();
 
         if (key == "__daily")

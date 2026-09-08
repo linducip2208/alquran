@@ -75,7 +75,7 @@ internal sealed class DownloadCenterDialog : Form
 
     private SurahOfflineSummary[] _surahRows = Array.Empty<SurahOfflineSummary>();
     private List<AyahRow> _filteredAyat = new();
-    /// <summary>(F) HANYA qari (Reciters.All — 43). Voice translation TIDAK masuk daftar ini.</summary>
+    /// <summary>(F) HANYA qari (Reciters.All — 47). Voice translation TIDAK masuk daftar ini.</summary>
     private List<ReciterSummary> _qariRows = new();
     /// <summary>(J) Qari yang sudah discan — kolom "Scan" menampilkan ✓.</summary>
     private readonly HashSet<string> _scanDone = new(StringComparer.Ordinal);
@@ -833,7 +833,7 @@ internal sealed class DownloadCenterDialog : Form
             _lblProgress.Text = "Memindai konten offline…";
 
             var mushafTask = Task.Run(() => MushafTypes.All.Select(svc.ScanMushaf).ToList(), ct);
-            // (F) HANYA Reciters.All (43 qari) — VoiceTranslations BUKAN qari dan punya inventory sendiri
+            // (F) HANYA Reciters.All (47 qari) — VoiceTranslations BUKAN qari dan punya inventory sendiri
             var reciterTask = Task.Run(() =>
             {
                 var list = new List<ReciterSummary>();
@@ -958,7 +958,7 @@ internal sealed class DownloadCenterDialog : Form
         return corrupt ? "! Ada file rusak/tidak lengkap" : "Sebagian";
     }
 
-    /// <summary>(AF) Card audio qari aktif + card qari tersimpan — SELALU basis 43 qari (tanpa voice).</summary>
+    /// <summary>(AF) Card audio qari aktif + card qari tersimpan — SELALU basis 47 qari (tanpa voice).</summary>
     private void UpdateQariCards()
     {
         var active = _qariRows.FirstOrDefault(r => r.Key == ActiveReciter().Key);
@@ -1561,7 +1561,7 @@ internal sealed class DownloadCenterDialog : Form
         int complete = _qariRows.Count(x => x.Total > 0 && x.Valid == x.Total);
         int partial = _qariRows.Count(x => x.Valid > 0 && x.Total > 0 && x.Valid < x.Total);
         int none = totalReciters - withDownloads;
-        // (F) panel stats selalu basis Reciters.All (43) — tanpa voice translation
+        // (F) panel stats selalu basis Reciters.All (47) — tanpa voice translation
         _lblQariStats.Text = $"Qari dengan file tersimpan: {withDownloads} / {totalReciters} (dari {Reciters.All.Count} qari)   •   Lengkap: {complete}   •   Sebagian: {partial}   •   Belum diunduh: {none}";
         UpdateQariCards();
     }
@@ -1615,7 +1615,7 @@ internal sealed class DownloadCenterDialog : Form
         row.Cells["scan"].Value = scanStatus;
     }
 
-    /// <summary>(I) Scan SEMUA qari dengan progress live: grid berisi 43 baris sejak awal (status Menunggu),
+    /// <summary>(I) Scan SEMUA qari dengan progress live: grid berisi 47 baris sejak awal (status Menunggu),
     /// lalu satu per satu dipindai — baris menampilkan "Memindai…", label menampilkan Qari i/43, file ditemukan,
     /// valid, ukuran. Satu folder = satu enumeration; PerSurah ikut terisi (M).</summary>
     private async Task ScanAllQarisLiveAsync()
@@ -1626,7 +1626,7 @@ internal sealed class DownloadCenterDialog : Form
         var ct = _scanCts.Token;
         try
         {
-            // prefill: 43 baris sesuai urutan Reciters.All — status awal "Menunggu"
+            // prefill: 47 baris sesuai urutan Reciters.All — status awal "Menunggu"
             _qariView = Reciters.All.Select(r =>
                 _qariRows.FirstOrDefault(x => x.Key == r.Key)
                 ?? new ReciterSummary(r.Key, r.Folder, r.Display, 0, QuranData.TotalAyahCount, 0, null)).ToList();
@@ -1739,7 +1739,7 @@ internal sealed class DownloadCenterDialog : Form
     }
 
     /// <summary>(AG) Refresh TER-target setelah unduhan qari selesai — hanya qari yang diunduh
-    /// yang discan ulang. Bukan 43 qari + semua mushaf + teks (itu hanya untuk Scan Ulang/Verifikasi/startup).</summary>
+    /// yang discan ulang. Bukan 47 qari + semua mushaf + teks (itu hanya untuk Scan Ulang/Verifikasi/startup).</summary>
     private async Task TargetedReciterRefreshAsync(IReadOnlyList<Reciter> reciters)
     {
         var svc = OfflineContentService.Instance;

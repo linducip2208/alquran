@@ -8,6 +8,7 @@ internal sealed class MainForm : Form
 
     private readonly AppSettings _settings = AppSettings.Current;
     private readonly IAudioEngine _audio;
+    private readonly AudioPlaybackService _playback;
     private readonly Queue<string> _playQueue = new();
 
     private CancellationTokenSource? _playCts;
@@ -44,6 +45,10 @@ internal sealed class MainForm : Form
     private ComboBox _cmbPb = new();
     private ComboBox _cmbTafsir = new();
     private ComboBox _cmbRepeat = new();
+    private ComboBox _cmbHizb = new();
+    private ComboBox _cmbHizbQ = new();
+    private ComboBox _cmbAutoStop = new();
+    private ComboBox _cmbWait = new();
     private Button _btnPlayPause = new();
     private Button _btnStop = new();
     private Button _btnPrevAya = new();
@@ -91,6 +96,10 @@ internal sealed class MainForm : Form
     private Button _btnFeatures = new();
     private TrackBar _trackSpeed = new();
     private Button _btnDownloadAll = new();
+    private readonly TextBox _txtQuranBase = new() { Width = 390 };
+    private readonly TextBox _txtPrayerBase = new() { Width = 390 };
+    private readonly TextBox _txtUpdateFeed = new() { Width = 390 };
+    private readonly TextBox _txtWordByWordBase = new() { Width = 390 };
     private MiniPlayerForm? _mini;
     private NotifyIcon? _trayIcon;
     private System.Windows.Forms.Timer? _reminderTimer;
@@ -100,8 +109,7 @@ internal sealed class MainForm : Form
     private bool _playingPlaylist;
     private string? _playlistFolder;
     private bool _focusMode;
-    private readonly List<(int Surah, int Ayah)> _history = new();
-    private int _histPos = -1;
+    private readonly NavigationHistory _history = new();
     private Dictionary<string, string>? _prayerTimes;
     private DateTime _prayerFetchedDate;
     private readonly HashSet<string> _notifiedPrayers = new();
@@ -118,6 +126,7 @@ internal sealed class MainForm : Form
     public MainForm()
     {
         _audio = new NAudioEngine();
+        _playback = new AudioPlaybackService(_audio, message => ShowStatus(message));
         _audio.VolumePercent = Math.Clamp(_settings.Volume, 0, 100);
         _audio.Finished += () =>
         {
@@ -151,6 +160,10 @@ internal sealed class MainForm : Form
         _mushafView.OverlayProvider = OverlayTextForAyah;
         _audio.Speed = Math.Clamp(_settings.Speed, 0.5f, 2f);
         ProgramServices.ActiveTranslationKey = _settings.Translation;
+        _txtQuranBase.Text = _settings.QuranBaseUrl;
+        _txtPrayerBase.Text = _settings.PrayerBaseUrl;
+        _txtUpdateFeed.Text = _settings.UpdateFeedUrl;
+        _txtWordByWordBase.Text = _settings.WordByWordBaseUrl;
 
         OfflineContentService.Instance.InventoryChanged += () =>
         {
@@ -312,6 +325,10 @@ internal sealed class MainForm : Form
         _cmbPb = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130, FlatStyle = FlatStyle.Flat };
         _cmbTafsir = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 190, DropDownWidth = 220, FlatStyle = FlatStyle.Flat };
         _cmbRepeat = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90, FlatStyle = FlatStyle.Flat };
+        _cmbHizb = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 128, DropDownWidth = 160, FlatStyle = FlatStyle.Flat };
+        _cmbHizbQ = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 110, DropDownWidth = 150, FlatStyle = FlatStyle.Flat };
+        _cmbAutoStop = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 140, FlatStyle = FlatStyle.Flat };
+        _cmbWait = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, FlatStyle = FlatStyle.Flat };
         _chkAutoNext = new CheckBox { Text = "Lanjut otomatis", AutoSize = true };
         _chkPlayOnClick = new CheckBox { Text = "Klik ayat = putar", AutoSize = true };
         _chkShowTrans = new CheckBox { Text = "Tampilkan arti", AutoSize = true };
@@ -542,6 +559,28 @@ internal sealed class MainForm : Form
         _cmbRepeat.Items.Add(new ComboItem("10×", 10));
         _cmbRepeat.Items.Add(new ComboItem("∞", -1));
 
+        _cmbWait.Items.Add(new ComboItem("Tanpa jeda", 0));
+        _cmbWait.Items.Add(new ComboItem("Jeda 0,5 detik", 500));
+        _cmbWait.Items.Add(new ComboItem("Jeda 1 detik", 1000));
+        _cmbWait.Items.Add(new ComboItem("Jeda 1,5 detik", 1500));
+
+        _cmbAutoStop.Items.Add(new ComboItem("Nonstop", ""));
+        _cmbAutoStop.Items.Add(new ComboItem("Stop per halaman", "page"));
+        _cmbAutoStop.Items.Add(new ComboItem("Stop per surah", "surah"));
+        _cmbAutoStop.Items.Add(new ComboItem("Stop per juz", "juz"));
+
+        for (int h = 1; h <= 60; h++)
+        {
+            _cmbHizb.Items.Add(new ComboItem($"Hizb {h}", h));
+        }
+        _cmbHizbQ.Items.AddRange(new object[]
+        {
+            new ComboItem("awal hizb", 0),
+            new ComboItem("¼", 1),
+            new ComboItem("½", 2),
+            new ComboItem("¾", 3),
+        });
+
         for (int j = 1; j <= 30; j++)
         {
             var start = QuranData.JuzStart(j);
@@ -561,6 +600,20 @@ internal sealed class MainForm : Form
         {
             if ((int)((ComboItem)_cmbRepeat.Items[i]).Value! == _settings.Repeat) _cmbRepeat.SelectedIndex = i;
         }
+        _cmbWait.SelectedIndex = 0;
+        for (int i = 0; i < _cmbWait.Items.Count; i++)
+        {
+            if ((int)((ComboItem)_cmbWait.Items[i]).Value! == _settings.RepeatDelayMs) _cmbWait.SelectedIndex = i;
+        }
+        _cmbAutoStop.SelectedIndex = 0;
+        for (int i = 0; i < _cmbAutoStop.Items.Count; i++)
+        {
+            if ((string)((ComboItem)_cmbAutoStop.Items[i]).Value! == _settings.AutoStop) _cmbAutoStop.SelectedIndex = i;
+        }
+        int hq = Math.Clamp(QuranData.FindHizbQuarter(_settings.Surah, _settings.Ayah), 1, 240);
+        int hz = (hq - 1) / 4 + 1;
+        _cmbHizb.SelectedIndex = Math.Clamp(hz - 1, 0, 59);
+        _cmbHizbQ.SelectedIndex = Math.Clamp((hq - 1) % 4, 0, 3);
 
         int qareeIdx = 0;
         for (int i = 0; i < _cmbQaree.Items.Count; i++)
@@ -646,6 +699,10 @@ internal sealed class MainForm : Form
     private string CurrentMode => (string)((ComboItem)_cmbMode.SelectedItem!).Value!;
 
     private int CurrentRepeat => (int)((ComboItem)_cmbRepeat.SelectedItem!).Value!;
+
+    private int CurrentWaitMs => (int)(((ComboItem?)_cmbWait.SelectedItem)?.Value ?? 0);
+
+    private string CurrentAutoStop => (string)(((ComboItem?)_cmbAutoStop.SelectedItem)?.Value ?? "");
 
     private void WireEvents()
     {
@@ -808,6 +865,37 @@ internal sealed class MainForm : Form
             if (_uiBusy) return;
             _settings.Repeat = CurrentRepeat;
             _settings.Save();
+        };
+
+        _cmbWait.SelectedIndexChanged += (_, _) =>
+        {
+            if (_uiBusy) return;
+            _settings.RepeatDelayMs = CurrentWaitMs;
+            _settings.Save();
+        };
+
+        _cmbAutoStop.SelectedIndexChanged += (_, _) =>
+        {
+            if (_uiBusy) return;
+            _settings.AutoStop = CurrentAutoStop;
+            _settings.Save();
+        };
+
+        _cmbHizb.SelectedIndexChanged += (_, _) =>
+        {
+            if (_uiBusy || _cmbHizb.SelectedIndex < 0) return;
+            int h = (int)(((ComboItem)_cmbHizb.SelectedItem).Value ?? 1);
+            int q = _cmbHizbQ.SelectedIndex is >= 0 and int qi ? qi : 0;
+            var (s, a) = QuranData.HizbQuarterStart((h - 1) * 4 + q + 1);
+            _ = GotoAyahAsync(s, a);
+        };
+
+        _cmbHizbQ.SelectedIndexChanged += (_, _) =>
+        {
+            if (_uiBusy || _cmbHizb.SelectedIndex < 0 || _cmbHizbQ.SelectedIndex < 0) return;
+            int h = (int)(((ComboItem)_cmbHizb.SelectedItem).Value ?? 1);
+            var (s, a) = QuranData.HizbQuarterStart((h - 1) * 4 + _cmbHizbQ.SelectedIndex + 1);
+            _ = GotoAyahAsync(s, a);
         };
 
         _btnPlayPause.Click += (_, _) =>
@@ -980,6 +1068,19 @@ internal sealed class MainForm : Form
             using var d = new QuizDialog(_curSurah);
             d.ShowDialog(this);
         });
+        featuresMenu.Items.Add("Uji Hafalan Rentang (Mushaf Test)", null, (_, _) =>
+        {
+            using var d = new Controls.MTestDialog(_curSurah, _curAyah, CurrentReciter?.Key ?? "husary");
+            d.PlayRequested += (s, a) =>
+            {
+                _playingPlaylist = false;
+                _playlistFolder = null;
+                PlayAyah(s, a, withIntro: false);
+            };
+            d.GotoRequested += (s, a) => _ = GotoAyahAsync(s, a);
+            d.ShowDialog(this);
+        });
+        featuresMenu.Items.Add("Cetak Halaman Mushaf…", null, (_, _) => PrintMushafPage());
         featuresMenu.Items.Add("Playlist Surah", null, (_, _) =>
         {
             var r = CurrentReciter;
@@ -1123,17 +1224,16 @@ internal sealed class MainForm : Form
         featuresMenu.Items.Add("Cek Pembaruan", null, async (_, _) =>
         {
             ShowStatus("Memeriksa pembaruan…");
-            var upd = await BackupService.CheckUpdateAsync(CancellationToken.None);
+            var upd = await UpdateService.CheckAsync(CancellationToken.None);
             if (upd == null)
             {
                 ShowStatus("Gagal memeriksa pembaruan", error: true);
                 return;
             }
-            string latest = upd.Value.Tag.TrimStart('v');
-            if (string.CompareOrdinal(latest, AppVersion) > 0)
+            if (UpdateService.IsNewerVersion(upd.Tag, AppVersion))
             {
                 var ask = MessageBox.Show(this,
-                    $"Versi baru tersedia: {upd.Value.Tag} (kamu pakai v{AppVersion}).\nBuka halaman unduhan?",
+                    $"Versi baru tersedia: {upd.Tag} (kamu pakai v{AppVersion}).\nBuka halaman unduhan?",
                     "Pembaruan Tersedia", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
                 if (ask == DialogResult.Yes)
                 {
@@ -1141,7 +1241,7 @@ internal sealed class MainForm : Form
                     {
                         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                         {
-                            FileName = upd.Value.Url,
+                            FileName = upd.Url,
                             UseShellExecute = true,
                         });
                     }
@@ -1283,6 +1383,8 @@ internal sealed class MainForm : Form
                     ("Audio", new (string?, Control)[]
                     {
                         ("Ulangi ayat", _cmbRepeat),
+                        ("Jeda antar pengulangan", _cmbWait),
+                        ("Berhenti otomatis", _cmbAutoStop),
                         (null, _chkTeacher),
                         (null, _chkRepeatRange),
                         ("Rentang dari", _numRangeFrom),
@@ -1295,6 +1397,8 @@ internal sealed class MainForm : Form
                         ("Jenis mushaf", _cmbMosshaf),
                         ("Halaman", _cmbPage),
                         ("Juz", _cmbJuz),
+                        ("Hizb", _cmbHizb),
+                        ("Bagian hizb", _cmbHizbQ),
                         (null, _chkSinglePage),
                         (null, _chkOverlay),
                     }),
@@ -1307,11 +1411,23 @@ internal sealed class MainForm : Form
                         (null, _btnFit),
                         (null, _btnTop),
                         (null, _btnDownload),
+                    }),
+                    ("Provider & Endpoint", new (string?, Control)[]
+                    {
+                        ("Quran / mushaf / tafsir", _txtQuranBase),
+                        ("Jadwal sholat", _txtPrayerBase),
+                        ("Word-by-word", _txtWordByWordBase),
+                        ("Feed update", _txtUpdateFeed),
                     }));
             }
             _settingsDlg.Show(this);
             _settingsDlg.BringToFront();
         };
+
+        _txtQuranBase.TextChanged += (_, _) => { _settings.QuranBaseUrl = _txtQuranBase.Text.Trim(); _settings.Save(); };
+        _txtPrayerBase.TextChanged += (_, _) => { _settings.PrayerBaseUrl = _txtPrayerBase.Text.Trim(); _settings.Save(); };
+        _txtUpdateFeed.TextChanged += (_, _) => { _settings.UpdateFeedUrl = _txtUpdateFeed.Text.Trim(); _settings.Save(); };
+        _txtWordByWordBase.TextChanged += (_, _) => { _settings.WordByWordBaseUrl = _txtWordByWordBase.Text.Trim(); _settings.Save(); };
 
         _chkDark.CheckedChanged += (_, _) =>
         {
@@ -1432,6 +1548,10 @@ internal sealed class MainForm : Form
             int page = QuranData.FindPage(mt.PageKey, surah, ayah);
             if (_cmbPage.Items.Count > 0) _cmbPage.SelectedIndex = Math.Clamp(page - 1, 0, _cmbPage.Items.Count - 1);
         }
+        // sinkronkan indikator hizb/kuartal dengan posisi ayat aktif
+        int hqNow = QuranData.FindHizbQuarter(surah, ayah);
+        _cmbHizb.SelectedIndex = Math.Clamp((hqNow - 1) / 4, 0, _cmbHizb.Items.Count - 1);
+        _cmbHizbQ.SelectedIndex = Math.Clamp((hqNow - 1) % 4, 0, _cmbHizbQ.Items.Count - 1);
         _uiBusy = false;
 
         if (CurrentMode == "teks")
@@ -1763,6 +1883,15 @@ internal sealed class MainForm : Form
         }
     }
 
+    // (KSU rule) qari yang rekamannya SUDAH mengandung basmalah di awal ayat 1 —
+    // KSU tidak memutar basmalah terpisah untuk mereka
+    private static readonly string[] BasmalaIncludedFolders =
+        { "Banna_32kbps", "Ahmed_ibn_Ali_al-Ajamy_64kbps", "warsh_yassin_64kbps" };
+
+    // (KSU rule) khaleefa_96kbps — rekaman hanya mulai dari surah 46
+    private const string KhaleefaFolder = "khaleefa_96kbps";
+    private const int KhaleefaFirstSurah = 46;
+
     private void PlayAyah(int surah, int ayah, bool withIntro)
     {
         var reciter = CurrentReciter;
@@ -1771,6 +1900,15 @@ internal sealed class MainForm : Form
         if (reciter == null && pb == null && !hasOverride)
         {
             ShowStatus("Pilih qari terlebih dahulu", error: true);
+            return;
+        }
+
+        string folder = pb?.Folder ?? (hasOverride ? _playlistFolder : reciter?.Folder) ?? reciter!.Folder;
+
+        // (KSU rule) batasan qari khaleefa: rekaman dimulai dari surah 46
+        if (folder.Equals(KhaleefaFolder, StringComparison.OrdinalIgnoreCase) && surah < KhaleefaFirstSurah)
+        {
+            ShowStatus($"Rekaman Khalifa Al-Tunaiji dimulai dari QS {KhaleefaFirstSurah} (Al-Ahqaf) — pilih qari lain untuk surah lebih awal", error: true);
             return;
         }
 
@@ -1784,17 +1922,21 @@ internal sealed class MainForm : Form
         _audio.Stop();
         _audio.Close();
 
-        string folder = pb?.Folder ?? (hasOverride ? _playlistFolder : reciter?.Folder) ?? reciter!.Folder;
-        if (withIntro && pb == null)
+        if (withIntro)
         {
             if (!_introPlayed)
             {
                 _playQueue.Enqueue(KsuAudio.AudhubillahUrl());
                 _introPlayed = true;
             }
-            if (ayah == 1 && surah != 1 && surah != 9 && _basmalaSurah != surah)
+            bool basmalaIncluded = BasmalaIncludedFolders.Any(f => f.Equals(folder, StringComparison.OrdinalIgnoreCase));
+            if (ayah == 1 && surah != 1 && surah != 9 && !basmalaIncluded)
             {
-                _playQueue.Enqueue(KsuAudio.BasmalaUrl(reciter!.Folder));
+                // (KSU rule) voice translation pakai basmalah bersama; qari pakai rekamannya sendiri (001001.mp3)
+                string basmala = pb != null || hasOverride
+                    ? KsuAudio.BasmalaUrl("all").Replace("/all/001001.mp3", "/all/bismillah.mp3")
+                    : KsuAudio.BasmalaUrl(folder);
+                _playQueue.Enqueue(basmala);
                 _basmalaSurah = surah;
             }
         }
@@ -1828,26 +1970,10 @@ internal sealed class MainForm : Form
 
         try
         {
-            var local = KsuAudio.CachePath(cacheRel);
-            var st = OfflineContentService.Instance.GetAudioStatus(cacheRel);
-            if (!st.IsValid)
-            {
-                ShowStatus("Mengunduh audio…");
-                bool ok = await DownloadManager.Shared.EnsureFileAsync(ProgramServices.Http, url, cacheRel,
-                    _playCts?.Token ?? CancellationToken.None);
-                if (token != _playToken) return;
-                if (!ok)
-                {
-                    var rec = Reciters.All.FirstOrDefault(r => rel.StartsWith(r.Folder + "/", StringComparison.Ordinal));
-                    ShowStatus($"Audio QS {_curSurah}:{_curAyah} untuk {rec?.Display ?? rel.Split('/')[0]} belum tersedia offline. Buka Pusat Unduhan (⬇) untuk mengunduh.", error: true);
-                    UpdatePlayButton();
-                    return;
-                }
-            }
+            var local = await _playback.EnsureAndPlayAsync(
+                url, cacheRel, _playCts?.Token ?? CancellationToken.None);
             if (token != _playToken) return;
 
-            if (!_audio.Open(local)) throw new Exception("MCI gagal membuka file audio");
-            if (!_audio.Play()) throw new Exception("Gagal memutar audio");
             UpdatePlayButton();
             ShowStatus($"Memutar: {rel}");
         }
@@ -1865,6 +1991,27 @@ internal sealed class MainForm : Form
     {
         if (token != _playToken) return;
         UpdatePlayButton();
+
+        // (KSU repeat_waiting) jeda antar pengulangan/ayat sebelum lanjut
+        int delay = CurrentWaitMs;
+        if (delay > 0)
+        {
+            var t = new System.Windows.Forms.Timer { Interval = delay };
+            t.Tick += (_, _) =>
+            {
+                t.Stop();
+                t.Dispose();
+                ContinueQueueFinished(token);
+            };
+            t.Start();
+            return;
+        }
+        ContinueQueueFinished(token);
+    }
+
+    private void ContinueQueueFinished(int token)
+    {
+        if (token != _playToken) return;
 
         if (_chkTeacher.Checked)
         {
@@ -1887,6 +2034,23 @@ internal sealed class MainForm : Form
             _playQueue.Enqueue(KsuAudio.AyahUrl(folder, _curSurah, _curAyah));
             _ = PlayNextInQueueAsync(token);
             return;
+        }
+
+        // (KSU sel_autoStop) berhenti otomatis saat ayat penutup scope selesai —
+        // fitur lalu dimatikan seperti perilaku KSU "nonaktifkan autostop"
+        if (!_playingPlaylist && _chkAutoNext.Checked)
+        {
+            string mode = CurrentAutoStop;
+            if (mode.Length > 0 && IsLastAyaInScope(mode, _curSurah, _curAyah))
+            {
+                _settings.AutoStop = "";
+                _settings.Save();
+                _uiBusy = true;
+                _cmbAutoStop.SelectedIndex = 0;
+                _uiBusy = false;
+                ShowStatus("Auto-stop: " + mode + " selesai — playback dihentikan, fitur otomatis nonaktif");
+                return;
+            }
         }
 
         if (!_chkAutoNext.Checked)
@@ -1943,6 +2107,42 @@ internal sealed class MainForm : Form
         }
     }
 
+    /// <summary>(KSU sel_autoStop) apakah (surah, ayah) adalah ayat TERAKHIR dalam scope
+    /// auto-stop: "page" = halaman mushaf, "surah", "juz".</summary>
+    private static bool IsLastAyaInScope(string mode, int surah, int ayah)
+    {
+        switch (mode)
+        {
+            case "page":
+            {
+                var mk = MushafTypes.ResolveMushaf(AppSettings.Current.Mosshaf);
+                int page = QuranData.FindPage(mk.PageKey, surah, ayah);
+                (int Surah, int Ayah) next = page < QuranData.PageCount(mk.PageKey)
+                    ? QuranData.PageStart(mk.PageKey, page + 1)
+                    : (114, QuranData.SurahAyahCount(114));
+                return QuranData.AyaToId(surah, ayah) == QuranData.AyaToId(next.Surah, next.Ayah) - 1;
+            }
+            case "surah":
+                return ayah >= QuranData.SurahAyahCount(surah);
+            case "juz":
+            {
+                int id = QuranData.AyaToId(surah, ayah);
+                for (int j = 1; j <= 30; j++)
+                {
+                    var (js, ja) = QuranData.JuzStart(j);
+                    int jid = QuranData.AyaToId(js, ja);
+                    if (jid > id)
+                    {
+                        return jid == id + 1;
+                    }
+                }
+                return surah == 114 && ayah == QuranData.SurahAyahCount(114);
+            }
+            default:
+                return false;
+        }
+    }
+
     private async Task TeacherReplayAsync(int token)
     {
         try
@@ -1965,33 +2165,21 @@ internal sealed class MainForm : Form
     }
 
     private void PushHistory(int surah, int ayah)
-    {
-        if (_histPos >= 0 && _histPos < _history.Count
-            && _history[_histPos].Surah == surah && _history[_histPos].Ayah == ayah) return;
-
-        while (_history.Count > _histPos + 1) _history.RemoveAt(_history.Count - 1);
-        _history.Add((surah, ayah));
-        if (_history.Count > 200) _history.RemoveAt(0);
-        _histPos = _history.Count - 1;
-    }
+        => _history.Push(surah, ayah);
 
     private void NavBack()
     {
-        if (_histPos > 0)
+        if (_history.TryBack(out var location))
         {
-            _histPos--;
-            var (s, a) = _history[_histPos];
-            _ = GotoAyahAsync(s, a, pushHistory: false);
+            _ = GotoAyahAsync(location.Surah, location.Ayah, pushHistory: false);
         }
     }
 
     private void NavForward()
     {
-        if (_histPos < _history.Count - 1)
+        if (_history.TryForward(out var location))
         {
-            _histPos++;
-            var (s, a) = _history[_histPos];
-            _ = GotoAyahAsync(s, a, pushHistory: false);
+            _ = GotoAyahAsync(location.Surah, location.Ayah, pushHistory: false);
         }
     }
 
@@ -2004,6 +2192,58 @@ internal sealed class MainForm : Form
         _playQueue.Clear();
         UpdatePlayButton();
         ShowStatus(message);
+    }
+
+    /// <summary>(KSU proj_print) cetak halaman mushaf aktif — gambar PNG halaman dipakai apa adanya,
+    /// diunduh dulu bila belum ada di cache offline.</summary>
+    private async void PrintMushafPage()
+    {
+        var mt = CurrentMushafType;
+        if (mt == null) return;
+        try
+        {
+            int page = _mushafView.CurrentPage > 0 && CurrentMode == "mushaf"
+                ? _mushafView.CurrentPage
+                : QuranData.FindPage(mt.PageKey, _curSurah, _curAyah);
+            ShowStatus("Menyiapkan cetak halaman " + page + "…");
+
+            string rel = $"mushaf/{mt.Key}/{page}.png";
+            string local = KsuAudio.CachePath(rel);
+            if (!DownloadManager.FileValid(local, 2048))
+            {
+                string url = mt.ImageBase + page + ".png";
+                if (!await DownloadManager.Shared.EnsureFileAsync(ProgramServices.Http, url, rel, CancellationToken.None))
+                {
+                    throw new HttpRequestException("halaman mushaf tidak tersedia (offline?)");
+                }
+            }
+
+            using var img = Image.FromFile(local);
+            using var printDoc = new System.Drawing.Printing.PrintDocument();
+            printDoc.DocumentName = $"Mushaf {mt.Display} — Halaman {page}";
+            printDoc.PrintPage += (_, e) =>
+            {
+                var b = e.MarginBounds;
+                var g = e.Graphics ?? throw new InvalidOperationException("no printer graphics");
+                float scale = Math.Min(b.Width / (float)img.Width, b.Height / (float)img.Height);
+                int w = (int)(img.Width * scale);
+                int h = (int)(img.Height * scale);
+                g.DrawImage(img, b.Left + (b.Width - w) / 2, b.Top + (b.Height - h) / 2, w, h);
+            };
+            using var preview = new PrintPreviewDialog
+            {
+                Document = printDoc,
+                Width = 900,
+                Height = 700,
+                StartPosition = FormStartPosition.CenterParent,
+            };
+            ShowStatus("Mencetak: Mushaf " + mt.Display + " hal " + page);
+            preview.ShowDialog(this);
+        }
+        catch (Exception ex)
+        {
+            ShowStatus("Cetak gagal: " + ex.Message, error: true);
+        }
     }
 
     private void UpdatePlayButton()
@@ -2071,7 +2311,7 @@ internal sealed class MainForm : Form
             {
                 _prayerFetchedDate = DateTime.Today;
                 _notifiedPrayers.Clear();
-                string url = $"https://api.aladhan.com/v1/timingsByCity?city={Uri.EscapeDataString(_settings.PrayerCity)}"
+                string url = $"{ProviderEndpoints.PrayerBaseUrl}/v1/timingsByCity?city={Uri.EscapeDataString(_settings.PrayerCity)}"
                     + $"&country={Uri.EscapeDataString(_settings.PrayerCountry)}&method={_settings.PrayerMethod}";
                 using var resp = await ProgramServices.Http.GetAsync(url, CancellationToken.None);
                 resp.EnsureSuccessStatusCode();
@@ -2239,7 +2479,7 @@ internal sealed class MainForm : Form
             "e3rab" => "eerab",
             _ => author,
         };
-        return $"https://quran.ksu.edu.sa/tafseer/{web}/sura{surah}-aya{ayah}.html";
+        return $"{ProviderEndpoints.QuranBaseUrl}/tafseer/{web}/sura{surah}-aya{ayah}.html";
     }
 
     private void OpenTafsirInBrowser()

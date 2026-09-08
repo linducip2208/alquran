@@ -16,7 +16,7 @@ public static class QuranData
         string js = reader.ReadToEnd();
 
         var result = new Dictionary<string, int[][]>();
-        foreach (var name in new[] { "Sura", "Page", "Page_warsh", "Page2", "Juz" })
+        foreach (var name in new[] { "Sura", "Page", "Page_warsh", "Page2", "Juz", "HizbQaurter" })
         {
             result[name] = ParseArray(js, name);
         }
@@ -191,6 +191,49 @@ public static class QuranData
     {
         var row = Table("Juz")[juz];
         return (row[0], row[1]);
+    }
+
+    /// <summary>Jumlah kuartal hizb (240) dari tabel HizbQaurter — 0 bila tabel tidak ada.</summary>
+    public static int HizbQuarterCount
+    {
+        get
+        {
+            var t = _data.Value.TryGetValue("HizbQaurter", out var hz) ? hz : Array.Empty<int[]>();
+            int n = t.Length - 1;
+            while (n >= 1 && (t[n].Length < 2 || t[n][0] > SurahCount)) n--;
+            return n;
+        }
+    }
+
+    /// <summary>Ayat awal kuartal hizb ke-N (1..240). N = 1..4 hizb pertama = juz pertama.</summary>
+    public static (int Surah, int Ayah) HizbQuarterStart(int quarter)
+    {
+        var row = Table("HizbQaurter")[quarter];
+        return (row[0], row[1]);
+    }
+
+    /// <summary>Kuartal hizb (1..240) yang memuat (surah, ayah).</summary>
+    public static int FindHizbQuarter(int surah, int ayah)
+    {
+        int target = AyaToId(surah, ayah);
+        var t = Table("HizbQaurter");
+        int hi = HizbQuarterCount;
+        int lo = 1, best = 1;
+        while (lo <= hi)
+        {
+            int mid = (lo + hi) / 2;
+            var start = HizbQuarterStart(mid);
+            if (AyaToId(start.Surah, start.Ayah) <= target)
+            {
+                best = mid;
+                lo = mid + 1;
+            }
+            else
+            {
+                hi = mid - 1;
+            }
+        }
+        return best;
     }
 
     public static byte SajdaType(int surah, int ayah)

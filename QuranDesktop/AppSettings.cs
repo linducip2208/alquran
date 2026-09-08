@@ -16,6 +16,8 @@ internal sealed class AppSettings
     public string Mosshaf { get; set; } = "hafs";
     public string Mode { get; set; } = "teks";
     public int Repeat { get; set; } = 1;
+    public int RepeatDelayMs { get; set; } = 0;
+    public string AutoStop { get; set; } = "";
     public bool AutoNext { get; set; } = true;
     public bool PlayOnClick { get; set; } = true;
     public bool ShowTafsirPanel { get; set; } = true;
@@ -41,6 +43,10 @@ internal sealed class AppSettings
     public float ManualZoom { get; set; } = 1f;
     public int DetailPanelWidth { get; set; } = 320;
     public bool DetailPanelCollapsed { get; set; } = false;
+    public string QuranBaseUrl { get; set; } = "https://quran.ksu.edu.sa";
+    public string PrayerBaseUrl { get; set; } = "https://api.aladhan.com";
+    public string UpdateFeedUrl { get; set; } = "https://api.github.com/repos/linducip2208/alquran/releases/latest";
+    public string WordByWordBaseUrl { get; set; } = "https://api.quran.com";
 
     private static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -71,8 +77,9 @@ internal sealed class AppSettings
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Program.Log(ex);
         }
         return new AppSettings();
     }
@@ -84,8 +91,9 @@ internal sealed class AppSettings
             Directory.CreateDirectory(Dir);
             File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
         }
-        catch
+        catch (Exception ex)
         {
+            Program.Log(ex);
         }
     }
 }
